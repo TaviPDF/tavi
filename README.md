@@ -39,4 +39,8 @@ npm start
 | `src/vendor/` | mitgelieferte Bibliotheken (pdf-lib, docx, PptxGenJS, JSZip, Tesseract) |
 | `build/` | Icons, NSIS-Installer, Skripte für Release (`release.py`), Mac (`mac.py`) und Microsoft Store (`store.py`) |
 
-Verwendete Bibliotheken: pdf.js und Tesseract (Apache 2.0), pdf-lib, docx, PptxGenJS, JSZip (jeweils MIT). Lizenztexte liegen in `src/vendor/`.
+## Lizenz
+
+Tavi steht unter der **[PolyForm Noncommercial License 1.0.0](LICENSE.md)**. Du darfst den Code ansehen, daraus lernen, ihn privat nutzen und für nicht kommerzielle Zwecke anpassen. **Kommerzielle Nutzung ist nicht erlaubt**, also zum Beispiel Verkauf, Einbau in kostenpflichtige Produkte oder Nutzung im Rahmen eines Geschäfts. Für eine kommerzielle Lizenz bitte Kontakt aufnehmen.
+
+Die mitgelieferten Bibliotheken behalten ihre eigenen Lizenzen: pdf.js und Tesseract (Apache 2.0), pdf-lib, docx, PptxGenJS, JSZip (jeweils MIT). Lizenztexte liegen in `src/vendor/`.

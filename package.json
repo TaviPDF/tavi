@@ -5,7 +5,7 @@
   "description": "PDF-Reader mit KI-Assistent zum Zusammenfassen und Erklären",
   "main": "main.js",
   "author": "Tavi",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
     "start": "electron .",
     "build:win": "electron-builder --win nsis --x64",
