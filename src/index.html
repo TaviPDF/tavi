@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; font-src 'self' data:; connect-src 'self' blob: data:">
+  <title>Tavi</title>
+  <link rel="stylesheet" href="../node_modules/pdfjs-dist/web/pdf_viewer.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="toolbar">
+    <button id="btnSide" class="icon" title="Seitenleiste ein/aus (Strg+B)" aria-label="Seitenleiste ein/aus"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="3" width="14" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 3v12" stroke="currentColor" stroke-width="1.5"/></svg></button>
+    <button id="btnOpen" class="btn primary" title="PDF oder Bilder öffnen (Strg+O)">Öffnen</button>
+    <button id="btnSave" class="icon" title="Speichern (Strg+S), Speichern unter (Strg+Umschalt+S)" aria-label="Speichern"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 2.5h9.5L15.5 5.5v10H3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6 2.5v4h5.5v-4M5.5 15.5v-5h7v5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><span class="dot" aria-hidden="true"></span></button>
+    <button id="btnPrint" class="icon" title="Drucken (Strg+P)" aria-label="Drucken"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M5 7V2.5h8V7M5 13H3.5A1.5 1.5 0 0 1 2 11.5v-3A1.5 1.5 0 0 1 3.5 7h11A1.5 1.5 0 0 1 16 8.5v3a1.5 1.5 0 0 1-1.5 1.5H13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><rect x="5" y="10.5" width="8" height="5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+    <div id="docName" class="docname">Kein Dokument</div>
+    <div class="group" id="pager">
+      <button id="prev" class="icon" title="Vorherige Seite" aria-label="Vorherige Seite">‹</button>
+      <input id="pageInput" type="number" min="1" value="1" aria-label="Seite">
+      <span id="pageCount" class="muted">/ –</span>
+      <button id="next" class="icon" title="Nächste Seite" aria-label="Nächste Seite">›</button>
+    </div>
+    <div class="group">
+      <button id="zoomOut" class="icon" title="Verkleinern (Strg −)" aria-label="Verkleinern">−</button>
+      <span id="zoomLabel" class="zoomlabel">100 %</span>
+      <button id="zoomIn" class="icon" title="Vergrößern (Strg +)" aria-label="Vergrößern">+</button>
+      <button id="fitWidth" class="btn ghost" title="An Seitenbreite anpassen (Strg+0)">Breite</button>
+    </div>
+    <button id="btnFind" class="icon" title="Suchen (Strg+F)" aria-label="Suchen"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 12l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    <button id="togglePanel" class="btn ghost" title="KI-Assistent ein/aus (Strg+J)">KI-Assistent</button>
+    <button id="updPill" class="upd-pill" type="button" hidden></button>
+    <button id="btnSettings" class="icon" title="Einstellungen" aria-label="Einstellungen">⚙</button>
+    <button id="btnAnnot" hidden></button><button id="btnFill" hidden></button>
+  </header>
+
+  <nav id="ribbon" class="ribbon" aria-label="Werkzeuge">
+    <div class="rb-tabs" role="tablist">
+      <button type="button" class="rb-tab" role="tab" data-rtab="read" aria-selected="false">Lesen</button>
+      <button type="button" class="rb-tab" role="tab" data-rtab="annot" aria-selected="false" title="Strg+H">Kommentieren</button>
+      <button type="button" class="rb-tab" role="tab" data-rtab="fill" aria-selected="false" title="Strg+U">Ausfüllen &amp; Unterschreiben</button>
+      <button type="button" class="rb-tab" role="tab" data-rtab="pages" aria-selected="false">Seiten</button>
+      <button type="button" class="rb-tab" role="tab" data-rtab="tools" aria-selected="false">Werkzeuge</button>
+      <button type="button" class="rb-tab" role="tab" data-rtab="view" aria-selected="false">Ansicht</button>
+    </div>
+    <button type="button" id="rbClose" class="rb-close" title="Leiste schließen" aria-label="Werkzeugleiste schließen" hidden>×</button>
+    <div class="rb-body">
+      <div class="rb-panel" data-rpanel="read" hidden>
+        <div class="rb-group" aria-label="Vorlesen">
+          <button type="button" id="ttsPlay" class="rb-btn" title="Ab der aktuellen Seite vorlesen (markierter Text wird zuerst gelesen)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" fill="currentColor"/></svg><span>Vorlesen</span></button>
+          <button type="button" id="ttsPause" class="rb-btn" title="Pause"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9M11 3.5v9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Pause</span></button>
+          <button type="button" id="ttsStop" class="rb-btn" title="Stopp"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor"/></svg><span>Stopp</span></button>
+          <label class="rb-select">Tempo <select id="ttsRate"><option value="0.85">langsam</option><option value="1" selected>normal</option><option value="1.2">schnell</option></select></label>
+        </div>
+        <div class="rb-group" aria-label="Bilder">
+          <button type="button" id="btnSnip" class="rb-btn" title="Bereich auf der Seite aufziehen, die KI beschreibt und erklärt ihn (Bilder, Diagramme, Tabellen)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 5l.9 2.1L11 8l-2.1.9L8 11l-.9-2.1L5 8l2.1-.9z" fill="currentColor"/></svg><span>Bereich erklären</span></button>
+        </div>
+        <div class="rb-group" aria-label="Übersetzen">
+          <button type="button" id="btnTranslate" class="rb-btn" title="Aktuelle Seite mit der KI übersetzen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h7M5.5 2v1.5M3.5 3.5c.5 2.5 2.5 4.5 5 5.5M7.5 3.5c-.5 2.5-2.5 4.5-5 5.5M8.5 14l3-7 3 7M9.5 12h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Seite übersetzen</span></button>
+          <label class="rb-select">in <select id="translateTo"><option>Deutsch</option><option>Englisch</option><option>Französisch</option><option>Spanisch</option><option>Italienisch</option><option>Türkisch</option><option>Polnisch</option><option>Ukrainisch</option><option>Russisch</option><option>Arabisch</option></select></label>
+        </div>
+        <div class="rb-group">
+          <button type="button" id="btnHitList" class="rb-btn" title="Alle Fundstellen der Suche in der Seitenleiste"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h2M2.5 8h2M2.5 12h2M6.5 4h7M6.5 8h7M6.5 12h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span>Trefferliste</span></button>
+          <button type="button" id="btnCommentList" class="rb-btn" title="Alle Anmerkungen des Dokuments in der Seitenleiste"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v8h-5l-3 3v-3h-3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span>Kommentarliste</span></button>
+        </div>
+      </div>
+  <div id="fillBar" class="fillbar rb-panel" data-rpanel="fill" hidden>
+    <div class="fill-row">
+      <span id="fillStatus" class="fill-status" aria-live="polite"></span>
+      <div class="fill-tools" role="toolbar" aria-label="Eigene Felder setzen">
+        <span class="fill-label">Selbst setzen:</span>
+        <button type="button" class="tool" data-tool="text"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M8 4v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Text</button>
+        <button type="button" class="tool" data-tool="check"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Kreuz</button>
+        <button type="button" class="tool" data-tool="date"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Datum</button>
+        <button type="button" class="tool" data-tool="sig"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 11c2-5 3.5-7 4.5-6.5S5 10 6.5 10s2-3 3-3 0 3 1 3 1.5-1 2.5-1.5M2 14h12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Unterschrift</button>
+      </div>
+      <span class="spacer"></span>
+      <button type="button" id="fillMine" class="btn ghost small" title="Name, Adresse usw. aus „Meine Daten“ in passende leere Felder eintragen">Meine Daten eintragen</button>
+      <button type="button" id="fillNext" class="btn ghost small">Nächstes Feld</button>
+      <button type="button" id="fillRedetect" class="btn ghost small" title="Felder noch einmal suchen, Ausgefülltes bleibt erhalten">Neu erkennen</button>
+      <label class="check" for="fillFlatten" title="Formularfelder werden ins PDF eingebrannt und lassen sich danach nicht mehr ändern"><input type="checkbox" id="fillFlatten"> fest einbrennen</label>
+      <button type="button" id="fillSave" class="btn primary small">PDF speichern …</button>
+      <button type="button" id="fillDone" class="btn ghost small">Fertig</button>
+    </div>
+    <p id="fillHint" class="fill-hint" hidden></p>
+  </div>
+
+
+  <div id="annotBar" class="fillbar annotbar rb-panel" data-rpanel="annot" hidden>
+    <div class="fill-row">
+      <div class="fill-tools an-normal-tools" role="toolbar" aria-label="Werkzeuge zum Markieren">
+        <button type="button" class="tool" data-atool="highlight" title="Textmarker (H)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M5 10.5l1-3.5 5-5 2.5 2.5-5 5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>Textmarker</button>
+        <button type="button" class="tool" data-atool="underline" title="Unterstreichen (U)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5v5a3.5 3.5 0 0 0 7 0v-5M3.5 14h9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Unterstreichen</button>
+        <button type="button" class="tool" data-atool="strike" title="Durchstreichen (D)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M11.5 4.5c-.5-1.2-1.8-2-3.5-2-2 0-3.3 1-3.3 2.5 0 3 7 1.8 7 5.2 0 1.6-1.5 2.8-3.7 2.8-1.8 0-3.2-.8-3.8-2.2M2.5 8h11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Durchstreichen</button>
+        <button type="button" class="tool" data-atool="note" title="Notiz (N)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h11v8h-5l-3 3v-3h-3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>Notiz</button>
+        <button type="button" class="tool" data-atool="pen" title="Stift (P)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5l1-3.5 7.5-7.5 2.5 2.5-7.5 7.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>Stift</button>
+        <button type="button" class="tool" data-atool="erase" title="Radierer: Anmerkung anklicken zum Löschen (E)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 13.5h7.5M2.8 9.7l6.4-6.4a1.5 1.5 0 0 1 2.1 0l1.4 1.4a1.5 1.5 0 0 1 0 2.1L7.3 12.2a1.5 1.5 0 0 1-1 .4H5.2a1.5 1.5 0 0 1-1-.4L2.8 10.8a.8.8 0 0 1 0-1.1zM5.8 6.7l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Radierer</button>
+        <button type="button" class="tool" data-atool="rect" title="Rechteck (R)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>Rechteck</button>
+        <button type="button" class="tool" data-atool="arrow" title="Pfeil (A)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 13.5l10-10M7 3.5h5.5V9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>Pfeil</button>
+        <button type="button" class="tool" data-atool="stamp" title="Stempel (S)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5h4v4l2.5 2H3.5L6 6.5zM2.5 11h11v2.5h-11z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Stempel</button>
+      </div>
+      <div class="fill-tools an-redact-tools" role="toolbar" aria-label="Schwärzen">
+        <span class="fill-label">Schwärzen:</span>
+        <button type="button" class="tool" data-atool="redact-text" title="Text mit der Maus markieren"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h7" stroke="currentColor" stroke-width="2.4"/></svg>Text</button>
+        <button type="button" class="tool" data-atool="redact-area" title="Rechteck aufziehen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" fill="currentColor"/></svg>Bereich</button>
+      </div>
+      <div id="annotColors" class="swatches" role="group" aria-label="Farbe"></div>
+      <label id="annotStampWrap" class="check" for="annotStamp" hidden>Stempel <select id="annotStamp"><option>ERLEDIGT</option><option>GEPRÜFT</option><option>GENEHMIGT</option><option>ABGELEHNT</option><option>ENTWURF</option><option>VERTRAULICH</option><option>KOPIE</option><option>BEZAHLT</option></select></label>
+      <label id="annotWidthWrap" class="check" for="annotWidth" hidden>Stärke <select id="annotWidth"><option value="1">dünn</option><option value="2" selected>mittel</option><option value="4">dick</option></select></label>
+      <span id="annotStatus" class="fill-status" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <button type="button" id="annotUndo" class="btn ghost small" title="Rückgängig (Strg+Z)">Rückgängig</button>
+      <button type="button" id="annotSave" class="btn primary small" title="Ins PDF speichern (Strg+S)">Speichern</button>
+      <button type="button" id="annotDone" class="btn ghost small">Fertig</button>
+    </div>
+  </div>
+
+
+      <div class="rb-panel" data-rpanel="pages" hidden>
+        <div class="rb-group">
+          <button type="button" id="btnPages" class="rb-btn" title="Löschen, drehen, umsortieren, einfügen (Strg+G)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="2" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="2" y="9" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9" width="5" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span>Seiten verwalten</span></button>
+          <button type="button" id="btnBlankPage" class="rb-btn" title="Leere Seite hinter der aktuellen Seite einfügen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8 7.5v5M5.5 10h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span>Leere Seite</span></button>
+          <button type="button" id="btnRotatePage" class="rb-btn" title="Aktuelle Seite dauerhaft um 90° drehen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M12.5 8A4.5 4.5 0 1 1 8 3.5h3M9.5 1.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Seite drehen</span></button>
+          <button type="button" id="btnDeletePage" class="rb-btn" title="Aktuelle Seite löschen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span>Seite löschen</span></button>
+        </div>
+        <div class="rb-group">
+          <button type="button" id="btnSplit" class="rb-btn" title="PDF in mehrere Dateien aufteilen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 1.5h9v13h-9zM1.5 8h13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="0" stroke-linejoin="round"/></svg><span>Aufteilen</span></button>
+          <button type="button" id="btnMerge" class="rb-btn" title="PDFs zusammenführen (Strg+M)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h5v4H2zM9 9h5v4H9zM4.5 7v3.5H9M11.5 9V5.5H7" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span>Zusammenführen</span></button>
+          <button type="button" id="btnImages" class="rb-btn" title="Fotos oder Scans zu einem PDF zusammenfassen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 11.5l3.5-3.5 3 3 2-2 2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="10.5" cy="6" r="1.2" fill="currentColor"/></svg><span>Bilder zu PDF</span></button>
+        </div>
+      </div>
+      <div class="rb-panel" data-rpanel="tools" hidden>
+        <div class="rb-group">
+          <button type="button" id="btnExport" class="rb-btn" title="In Word, PowerPoint, Excel oder JPEG umwandeln (Strg+E)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5.5h9l-2.5-2.5M13 10.5H4l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Umwandeln</span></button>
+          <button type="button" id="btnOcr" class="rb-btn" title="Gescannte Seiten durchsuchbar machen (OCR)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3M5 6h6M5 8.5h6M5 11h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Texterkennung</span></button>
+          <button type="button" id="btnCompress" class="rb-btn" title="Dateigröße verringern, z. B. für E-Mails"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2v4h-4M10.5 2v4h4M5.5 14v-4h-4M10.5 14v-4h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Verkleinern</span></button>
+        </div>
+        <div class="rb-group">
+          <button type="button" id="btnRedact" class="rb-btn" title="Textstellen dauerhaft entfernen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="5" width="12" height="6" rx="1" fill="currentColor"/></svg><span>Schwärzen</span></button>
+          <button type="button" id="btnPassword" class="rb-btn" title="Passwort setzen oder entfernen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span>Passwort</span></button>
+          <button type="button" id="btnCompare" class="rb-btn" title="Zwei Versionen eines Dokuments vergleichen"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 2.5h4.5v11H2.5zM9 2.5h4.5v11H9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4 5.5h1.5M10.5 5.5h1.5M4 8h1.5M10.5 9h1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span>Vergleichen</span></button>
+        </div>
+      </div>
+      <div class="rb-panel" data-rpanel="view" hidden>
+        <div class="rb-group seg" role="group" aria-label="Seitenansicht">
+          <button type="button" class="rb-btn" data-layout="single" aria-pressed="true"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="2" width="7" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span>Einzelseite</span></button>
+          <button type="button" class="rb-btn" data-layout="spread" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="6" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><rect x="8.5" y="3" width="6" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg><span>Doppelseite</span></button>
+          <button type="button" class="rb-btn" data-layout="book" aria-pressed="false" title="Doppelseite mit einzelnem Deckblatt"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4c-1.5-1-3.5-1.5-6-1.5v10c2.5 0 4.5.5 6 1.5 1.5-1 3.5-1.5 6-1.5v-10c-2.5 0-4.5.5-6 1.5zM8 4v10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span>Buch</span></button>
+        </div>
+        <div class="rb-group">
+          <button type="button" id="btnViewRotL" class="rb-btn" title="Ansicht nach links drehen (ändert die Datei nicht)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8A4.5 4.5 0 1 0 8 3.5H5M6.5 1.5l-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Drehen</span></button>
+          <button type="button" id="btnViewRotR" class="rb-btn" title="Ansicht nach rechts drehen (ändert die Datei nicht)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M12.5 8A4.5 4.5 0 1 1 8 3.5h3M9.5 1.5l2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Drehen</span></button>
+        </div>
+        <div class="rb-group">
+          <button type="button" id="btnSide2" class="rb-btn" title="Seitenleiste ein/aus (Strg+B)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 3v10" stroke="currentColor" stroke-width="1.3"/></svg><span>Seitenleiste</span></button>
+          <button type="button" id="btnFullscreen" class="rb-btn" title="Vollbild (F11)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Vollbild</span></button>
+          <button type="button" id="btnPresent" class="rb-btn" title="Präsentationsmodus (F5), Pfeiltasten blättern, Esc beendet"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 11v2.5M5.5 14h5M6.5 5l3 1.75-3 1.75z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg><span>Präsentation</span></button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <nav id="tabs" class="tabbar" hidden aria-label="Geöffnete PDFs">
+    <div id="tabList" class="tab-list" role="tablist"></div>
+    <button id="tabNew" class="tab-new" type="button" title="Weiteres PDF öffnen (Strg+O)" aria-label="Weiteres PDF öffnen">+</button>
+  </nav>
+
+  <main class="layout">
+    <aside id="side" class="side" hidden aria-label="Seitenleiste">
+      <div class="side-tabs" role="tablist">
+        <button type="button" id="sideThumbsTab" class="side-tab on" role="tab" aria-selected="true">Seiten</button>
+        <button type="button" id="sideOutlineTab" class="side-tab" role="tab" aria-selected="false">Inhalt</button>
+        <button type="button" id="sideHitsTab" class="side-tab" role="tab" aria-selected="false">Treffer</button>
+        <button type="button" id="sideCommentsTab" class="side-tab" role="tab" aria-selected="false" title="Kommentare und Anmerkungen">Notizen</button>
+      </div>
+      <div id="thumbs" class="thumbs"></div>
+      <div id="outline" class="outline" hidden></div>
+      <div id="hits" class="sidelist" hidden></div>
+      <div id="comments" class="sidelist" hidden></div>
+    </aside>
+    <section id="viewer" class="viewer" tabindex="-1">
+      <div id="findBar" class="findbar" hidden role="search">
+        <input id="findInput" type="search" placeholder="Im Dokument suchen" aria-label="Im Dokument suchen" autocomplete="off" spellcheck="false">
+        <span id="findCount" class="find-count muted"></span>
+        <button type="button" id="findPrev" class="icon small" aria-label="Vorheriger Treffer" title="Vorheriger Treffer (Umschalt+Enter)">‹</button>
+        <button type="button" id="findNext" class="icon small" aria-label="Nächster Treffer" title="Nächster Treffer (Enter)">›</button>
+        <button type="button" id="findClose" class="icon small" aria-label="Suche schließen" title="Schließen (Esc)">×</button>
+      </div>
+      <div id="welcome" class="welcome">
+        <div class="drop">
+          <svg class="logo" width="88" height="88" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="22" fill="#1E2A5A"></rect><rect x="24" y="35" width="52" height="13" rx="3" fill="#6EE7C8" transform="rotate(-5 50 41.5)"></rect><path d="M46 20 V62 Q46 78 62 78 H66" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <h1>PDF hier ablegen</h1>
+          <p>oder öffnen und dann Text markieren. Der KI-Assistent fasst zusammen und erklärt.</p>
+          <button id="btnOpen2" class="btn primary">PDF öffnen</button>
+        </div>
+        <div id="recentBox" class="recent" hidden>
+          <div class="recent-head"><h2>Zuletzt geöffnet</h2><button type="button" id="recentClear" class="btn ghost small">Liste leeren</button></div>
+          <div id="recentList" class="recent-list"></div>
+        </div>
+        <div id="setupCard" class="setup" hidden>
+          <h2>Einmalig: kostenlosen KI-Zugang einrichten</h2>
+          <ol>
+            <li>Öffne <a href="#" data-link="https://aistudio.google.com/apikey">Google AI Studio</a> und melde dich mit deinem Google-Konto an.</li>
+            <li>Klicke auf „API-Schlüssel erstellen“ und kopiere ihn.</li>
+            <li>Füge ihn in den Einstellungen ein. Fertig.</li>
+          </ol>
+          <button id="btnSetup" class="btn">Einstellungen öffnen</button>
+        </div>
+      </div>
+      <div id="pages" class="pages"></div>
+    </section>
+
+    <aside id="panel" class="panel">
+      <div class="panel-head">
+        <h2>KI-Assistent</h2>
+        <label class="level" for="level">Erklärung
+          <select id="level">
+            <option value="einfach">einfach</option>
+            <option value="normal">normal</option>
+            <option value="fachlich">fachlich</option>
+          </select>
+        </label>
+        <button id="confBtn" class="btn ghost small" type="button" aria-pressed="false" title="Vertraulich: Für dieses Dokument wird nichts an die KI gesendet">Vertraulich</button>
+        <button id="multiBtn" class="btn ghost small" type="button" aria-pressed="false" title="Fragen über alle offenen PDFs (vertrauliche ausgenommen)">Alle PDFs</button>
+        <button id="clearChat" class="btn ghost small" title="Unterhaltung leeren">Neu</button>
+      </div>
+      <div class="quick">
+        <button class="chip" data-action="page">Diese Seite zusammenfassen</button>
+        <button class="chip" data-action="doc">Ganzes Dokument zusammenfassen</button>
+        <button class="chip" data-action="terms">Fachbegriffe erklären</button>
+        <button class="chip" data-action="images">Bilder dieser Seite erklären</button>
+      </div>
+      <div id="messages" class="messages" aria-live="polite"></div>
+      <form id="askForm" class="ask">
+        <div id="quote" class="quote" hidden>
+          <span id="quoteText"></span>
+          <button type="button" id="quoteClear" class="icon small" aria-label="Zitat entfernen">×</button>
+        </div>
+        <textarea id="askInput" rows="2" placeholder="Frage zum Dokument stellen …"></textarea>
+        <button id="askBtn" class="btn primary" type="submit">Fragen</button>
+      </form>
+    </aside>
+  </main>
+
+  <div id="selBar" class="selbar" hidden>
+    <button data-sel="mark" title="Gelb markieren"><span class="mark-dot" aria-hidden="true"></span>Markieren</button>
+    <button data-sel="explain">Erklären</button>
+    <button data-sel="summary">Zusammenfassen</button>
+    <button data-sel="ask">Frage dazu</button>
+    <button data-sel="translate">Übersetzen</button>
+    <button data-sel="copy">Kopieren</button>
+  </div>
+
+  <dialog id="settings">
+    <form id="settingsForm" method="dialog">
+      <h2>Einstellungen</h2>
+      <fieldset>
+        <legend>KI-Dienst (beide kostenlos nutzbar)</legend>
+        <label class="radio"><input type="radio" name="provider" value="gemini" id="provGemini">
+          <span><strong>Google Gemini</strong><small>Großes Gedächtnis, liest auch lange Dokumente am Stück. Schlüssel: <a href="#" data-link="https://aistudio.google.com/apikey">aistudio.google.com/apikey</a></small></span></label>
+        <label class="radio"><input type="radio" name="provider" value="groq" id="provGroq">
+          <span><strong>Groq</strong><small>Sehr schnell, lange Dokumente werden in Teilen gelesen. Schlüssel: <a href="#" data-link="https://console.groq.com/keys">console.groq.com/keys</a></small></span></label>
+      </fieldset>
+      <label class="field" for="apiKey">API-Schlüssel
+        <input id="apiKey" type="password" autocomplete="off" spellcheck="false">
+        <small id="keyState" class="muted"></small>
+      </label>
+      <label class="field" for="model">Modell
+        <div class="row">
+          <select id="model">
+            <option value="auto">Automatisch (empfohlen)</option>
+          </select>
+          <button type="button" id="loadModels" class="btn ghost">Liste aktualisieren</button>
+        </div>
+        <small id="modelState" class="muted">Tavi wählt selbst und wechselt, wenn ein Modell ausfällt oder sein Gratis-Kontingent aufgebraucht ist.</small>
+      </label>
+      <p id="testResult" class="test" hidden></p>
+      <section class="upd-box" aria-labelledby="mineTitle">
+        <div class="upd-head"><strong id="mineTitle">Meine Daten</strong></div>
+        <p class="muted small-note">Name, Adresse, IBAN und Ähnliches einmal hinterlegen und beim Ausfüllen mit einem Klick eintragen. Die Daten bleiben verschlüsselt auf diesem PC und gehen nie an die KI.</p>
+        <div class="upd-row"><button type="button" id="profileBtn" class="btn ghost small">Meine Daten bearbeiten …</button></div>
+      </section>
+      <section class="upd-box" aria-labelledby="defTitle">
+        <div class="upd-head"><strong id="defTitle">Standard-PDF-Programm</strong></div>
+        <div class="upd-row"><button type="button" id="defaultsBtn" class="btn ghost small">Windows-Einstellung öffnen</button><span class="muted">Dort bei „.pdf“ Tavi auswählen.</span></div>
+      </section>
+      <section class="upd-box" aria-labelledby="updTitle">
+        <div class="upd-head"><strong id="updTitle">Updates</strong><span id="updVersion" class="muted"></span></div>
+        <label class="check-row" for="updAuto"><input type="checkbox" id="updAuto"> Automatisch nach neuen Versionen suchen und herunterladen</label>
+        <div class="upd-row">
+          <button type="button" id="updCheck" class="btn ghost small">Jetzt suchen</button>
+          <span id="updStatus" class="muted"></span>
+        </div>
+      </section>
+      <div class="actions">
+        <button type="button" id="removeKey" class="btn ghost danger">Schlüssel löschen</button>
+        <span class="spacer"></span>
+        <button type="button" id="testBtn" class="btn ghost">Verbindung testen</button>
+        <button type="button" id="closeSettings" class="btn ghost">Schließen</button>
+        <button type="button" id="saveSettings" class="btn primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="splitDlg" class="smalldlg" aria-labelledby="splitTitle">
+    <div class="sd-wrap">
+      <h2 id="splitTitle">PDF aufteilen</h2>
+      <p id="splitInfo" class="muted"></p>
+      <fieldset class="print-opts">
+        <legend>Wie aufteilen?</legend>
+        <label class="check-row"><input type="radio" name="splitMode" value="each" checked> Jede Seite als eigene Datei</label>
+        <label class="check-row"><input type="radio" name="splitMode" value="every"> Alle <input id="splitEvery" type="number" min="1" value="2" class="print-range" style="width:64px" aria-label="Seiten pro Datei"> Seiten eine neue Datei</label>
+        <label class="check-row"><input type="radio" name="splitMode" value="ranges"> Nach Teilen <input id="splitRanges" type="text" placeholder="z. B. 1-3; 4-6; 7-10" class="print-range" aria-label="Teile"></label>
+      </fieldset>
+      <p id="splitError" class="range-error" hidden></p>
+      <p id="splitStatus" class="muted"></p>
+      <p class="note">Danach wählst du den Ordner, in den die Dateien gespeichert werden.</p>
+      <div class="actions"><span class="spacer"></span><button type="button" id="splitCancel" class="btn ghost">Abbrechen</button><button type="button" id="splitGo" class="btn primary">Aufteilen …</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="ocrDlg" class="smalldlg" aria-labelledby="ocrTitle">
+    <div class="sd-wrap">
+      <h2 id="ocrTitle">Texterkennung (OCR)</h2>
+      <p>Macht eingescannte Seiten durchsuchbar und markierbar. Danach können Suche, Markieren, Ausfüllen und die KI auch mit Scans arbeiten. Die Erkennung läuft komplett auf deinem PC.</p>
+      <div class="print-grid">
+        <label>Sprache im Dokument <select id="ocrLang"><option value="deu">Deutsch</option><option value="eng">Englisch</option><option value="deu+eng">Deutsch und Englisch</option></select></label>
+      </div>
+      <fieldset class="print-opts">
+        <legend>Welche Seiten?</legend>
+        <label class="check-row"><input type="radio" name="ocrPages" value="empty" checked> Nur Seiten ohne Text (empfohlen)</label>
+        <label class="check-row"><input type="radio" name="ocrPages" value="all"> Alle Seiten</label>
+      </fieldset>
+      <progress id="ocrProgress" class="ocr-progress" hidden></progress>
+      <p id="ocrStatus" class="muted"></p>
+      <p id="ocrError" class="range-error" hidden></p>
+      <div class="actions"><span class="spacer"></span><button type="button" id="ocrCancel" class="btn ghost">Abbrechen</button><button type="button" id="ocrGo" class="btn primary">Text erkennen</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="compressDlg" class="smalldlg" aria-labelledby="compressTitle">
+    <div class="sd-wrap">
+      <h2 id="compressTitle">PDF verkleinern</h2>
+      <p>Bilder und Scans im PDF werden neu komprimiert. Text bleibt unverändert und scharf.</p>
+      <fieldset class="print-opts">
+        <legend>Wie stark?</legend>
+        <label class="check-row"><input type="radio" name="compressLevel" value="leicht"> Leicht: kaum sichtbarer Unterschied</label>
+        <label class="check-row"><input type="radio" name="compressLevel" value="mittel" checked> Mittel: gut für E-Mails (empfohlen)</label>
+        <label class="check-row"><input type="radio" name="compressLevel" value="stark"> Stark: kleinste Datei, Bilder etwas unschärfer</label>
+      </fieldset>
+      <p id="compressStatus" class="muted"></p>
+      <div class="actions"><span class="spacer"></span><button type="button" id="compressCancel" class="btn ghost">Abbrechen</button><button type="button" id="compressGo" class="btn primary">Verkleinern</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="protDlg" class="smalldlg" aria-labelledby="protTitle">
+    <div class="sd-wrap">
+      <h2 id="protTitle">Passwortschutz</h2>
+      <div id="protSet">
+        <p>Wer das PDF öffnen will, braucht dann dieses Passwort. Verschlüsselt wird mit AES-256. <strong>Merk dir das Passwort gut</strong>, Tavi kann es nicht wiederherstellen.</p>
+        <div class="print-grid">
+          <label>Passwort <input id="protPw1" type="password" autocomplete="new-password" style="width:220px"></label>
+          <label>Wiederholen <input id="protPw2" type="password" autocomplete="new-password" style="width:220px"></label>
+        </div>
+      </div>
+      <div id="protRemove" hidden>
+        <p>Dieses PDF ist mit einem Passwort geschützt. Nach dem Entfernen lässt es sich ohne Passwort öffnen.</p>
+        <div class="print-grid"><label>Aktuelles Passwort <input id="protPwOld" type="password" autocomplete="off" style="width:220px"></label></div>
+      </div>
+      <p id="protError" class="range-error" hidden></p>
+      <div class="actions"><span class="spacer"></span><button type="button" id="protCancel" class="btn ghost">Abbrechen</button><button type="button" id="protGo" class="btn primary">Passwort setzen</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="cmpDlg" class="merge cmpdlg" aria-labelledby="cmpTitle">
+    <div class="mg-wrap">
+      <header class="mg-head"><h2 id="cmpTitle">Vergleichen</h2><button type="button" id="cmpClose" class="icon" aria-label="Schließen">×</button></header>
+      <div class="pg-toolbar"><select id="cmpOther" class="cmp-select" aria-label="Vergleichen mit"></select><button type="button" id="cmpGo" class="btn primary small">Vergleichen</button><span class="spacer"></span><button type="button" id="cmpAi" class="btn ghost small" hidden>Mit KI zusammenfassen</button></div>
+      <p id="cmpStats" class="cmp-stats"></p>
+      <div id="cmpResult" class="cmp-result"></div>
+    </div>
+  </dialog>
+
+  <dialog id="confirmDlg" class="smalldlg" aria-labelledby="confirmTitle">
+    <div class="sd-wrap">
+      <h2 id="confirmTitle"></h2>
+      <p id="confirmText"></p>
+      <div id="confirmButtons" class="actions"></div>
+    </div>
+  </dialog>
+
+  <dialog id="profileDlg" class="smalldlg profiledlg" aria-labelledby="profileTitle">
+    <div class="sd-wrap">
+      <h2 id="profileTitle">Meine Daten</h2>
+      <p class="muted">Nur auf diesem PC gespeichert, verschlüsselt mit deinem Windows-Konto. Leere Felder werden beim Ausfüllen übersprungen.</p>
+      <div id="profileGrid" class="pf-grid"></div>
+      <div class="upd-row"><button type="button" id="profileClear" class="btn ghost small danger">Alles leeren</button><span class="spacer"></span><button type="button" id="profileCancel" class="btn ghost">Abbrechen</button><button type="button" id="profileSave" class="btn primary">Speichern</button></div>
+    </div>
+  </dialog>
+  <dialog id="pagesDlg" class="merge pagesdlg" aria-labelledby="pagesTitle">
+    <div class="mg-wrap">
+      <header class="mg-head">
+        <h2 id="pagesTitle">Seiten verwalten</h2>
+        <button type="button" id="pagesClose" class="icon" aria-label="Schließen">×</button>
+      </header>
+      <div class="pg-toolbar">
+        <button type="button" id="pagesAll" class="btn ghost small">Alle auswählen</button>
+        <button type="button" id="pagesRotL" class="btn ghost small" title="Auswahl nach links drehen">↺ Drehen</button>
+        <button type="button" id="pagesRotR" class="btn ghost small" title="Auswahl nach rechts drehen">↻ Drehen</button>
+        <button type="button" id="pagesDel" class="btn ghost small danger" title="Auswahl löschen (Entf)">Löschen</button>
+        <button type="button" id="pagesExtract" class="btn ghost small" title="Ausgewählte Seiten als neue PDF speichern">Als eigene PDF speichern …</button>
+        <span class="spacer"></span>
+        <button type="button" id="pagesInsert" class="btn ghost small" title="Seiten aus anderen PDFs einfügen (hinter der Auswahl oder am Ende)">PDF einfügen …</button>
+      </div>
+      <p class="muted pg-hint">Ziehen zum Umsortieren. Klicken wählt aus, mit Strg oder Umschalt mehrere.</p>
+      <div id="pagesGrid" class="pg-grid"></div>
+      <footer class="mg-foot">
+        <span id="pagesInfo" class="muted"></span>
+        <span class="spacer"></span>
+        <button type="button" id="pagesCancel" class="btn ghost">Abbrechen</button>
+        <button type="button" id="pagesApply" class="btn primary">Übernehmen</button>
+      </footer>
+    </div>
+  </dialog>
+  <dialog id="merge" class="merge" aria-labelledby="mergeTitle">
+    <div class="merge-wrap">
+      <header class="merge-head">
+        <div>
+          <h2 id="mergeTitle">PDFs zusammenführen</h2>
+          <p class="muted">Wähle links eine Datei und rechts ihre Seiten. Das neue PDF enthält die Seiten in der Reihenfolge der Dateiliste.</p>
+        </div>
+        <button id="mergeClose" class="icon" type="button" aria-label="Schließen" title="Schließen">×</button>
+      </header>
+      <div class="merge-body">
+        <aside class="merge-files">
+          <div class="files-head">
+            <strong>Dateien</strong>
+            <div class="files-actions">
+              <button id="mergeAddCurrent" class="btn ghost small" type="button" title="Das gerade geöffnete PDF hinzufügen">Offenes PDF</button>
+              <button id="mergeAdd" class="btn small" type="button">+ Hinzufügen</button>
+            </div>
+          </div>
+          <ol id="mergeList" class="file-list"></ol>
+          <div id="mergeEmpty" class="merge-empty">
+            <strong>Noch keine Dateien</strong>
+            <span>Klicke auf „+ Hinzufügen“ oder ziehe PDFs hierher.</span>
+          </div>
+        </aside>
+        <section class="merge-pages" aria-live="polite">
+          <div id="mpHead" class="pages-head">
+            <div class="mp-title">
+              <strong id="mpName"></strong>
+              <span id="mpCount" class="muted"></span>
+            </div>
+            <div class="mp-controls">
+              <label for="mpRange" class="range">Seiten
+                <input id="mpRange" type="text" spellcheck="false" autocomplete="off" placeholder="z. B. 1-5, 8, 10-12">
+              </label>
+              <button id="mpAll" class="btn ghost small" type="button">Alle</button>
+              <button id="mpNone" class="btn ghost small" type="button">Keine</button>
+            </div>
+            <p id="mpError" class="range-error" hidden></p>
+            <p class="hint muted">Klick wählt eine Seite an oder ab. Mit gedrückter Umschalttaste wählst du alle Seiten zwischen zwei Klicks.</p>
+          </div>
+          <div id="mpGrid" class="thumb-grid"></div>
+          <div id="mpEmpty" class="merge-empty big">
+            <strong>Füge links ein PDF hinzu</strong>
+            <span>Dann erscheinen hier seine Seiten zum Auswählen.</span>
+          </div>
+        </section>
+      </div>
+      <footer class="merge-foot">
+        <span id="mergeSummary" class="summary"></span>
+        <label class="check" for="mergeOpenAfter"><input type="checkbox" id="mergeOpenAfter" checked> danach öffnen</label>
+        <button id="mergeGo" class="btn primary" type="button" disabled>Zusammenführen und speichern …</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="export" class="export" aria-labelledby="exTitle">
+    <div class="ex-wrap">
+      <header class="merge-head">
+        <div>
+          <h2 id="exTitle">Umwandeln</h2>
+          <p class="muted"><span id="exDoc"></span></p>
+        </div>
+        <button id="exClose" class="icon" type="button" aria-label="Schließen" title="Schließen">×</button>
+      </header>
+      <div class="ex-body">
+        <div class="ex-label">In welches Format?</div>
+        <div id="exFormats" class="fmt-grid" role="radiogroup" aria-label="Zielformat">
+          <button type="button" class="fmt" data-fmt="docx" role="radio">
+            <span class="fmt-badge word" aria-hidden="true">W</span>
+            <span class="fmt-text"><strong>Word</strong><small>.docx · Text weiterbearbeiten</small></span>
+          </button>
+          <button type="button" class="fmt" data-fmt="pptx" role="radio">
+            <span class="fmt-badge ppt" aria-hidden="true">P</span>
+            <span class="fmt-text"><strong>PowerPoint</strong><small>.pptx · eine Folie je Seite</small></span>
+          </button>
+          <button type="button" class="fmt" data-fmt="xlsx" role="radio">
+            <span class="fmt-badge xls" aria-hidden="true">X</span>
+            <span class="fmt-text"><strong>Excel</strong><small>.xlsx · Tabellen auswerten</small></span>
+          </button>
+          <button type="button" class="fmt" data-fmt="jpeg" role="radio">
+            <span class="fmt-badge jpg" aria-hidden="true">JPG</span>
+            <span class="fmt-text"><strong>JPEG-Bilder</strong><small>.jpg · ein Bild je Seite</small></span>
+          </button>
+        </div>
+
+        <div class="ex-label">Wie?</div>
+        <div class="fmt-opts" data-fmt="docx">
+          <label class="opt"><input type="radio" name="docxMode" value="text" checked>
+            <span><strong>Bearbeitbarer Text</strong><small>Absätze, Überschriften und Aufzählungen werden erkannt. Bilder und genaues Layout gehen verloren.</small></span></label>
+          <label class="opt"><input type="radio" name="docxMode" value="images">
+            <span><strong>Seiten als Bilder</strong><small>Sieht genau aus wie das PDF, der Text ist aber nicht bearbeitbar.</small></span></label>
+          <label class="check-row" id="docxPageBreakRow"><input type="checkbox" id="docxPageBreak" checked> Jede PDF-Seite auf einer neuen Word-Seite beginnen</label>
+        </div>
+        <div class="fmt-opts" data-fmt="pptx" hidden>
+          <label class="opt"><input type="radio" name="pptxMode" value="images" checked>
+            <span><strong>Seiten als Bilder</strong><small>Jede Folie sieht genau aus wie die PDF-Seite. Ideal für aus PowerPoint exportierte PDFs.</small></span></label>
+          <label class="opt"><input type="radio" name="pptxMode" value="text">
+            <span><strong>Bearbeitbarer Text</strong><small>Textfelder an der ungefähren Position. Bilder und Grafiken fehlen.</small></span></label>
+          <label class="check-row"><input type="checkbox" id="pptxNotes"> Seitentext zusätzlich als Notizen zur Folie</label>
+        </div>
+        <div class="fmt-opts" data-fmt="xlsx" hidden>
+          <label class="opt"><input type="radio" name="xlsxMode" value="sheets" checked>
+            <span><strong>Ein Tabellenblatt je Seite</strong><small>Übersichtlich bei mehreren Tabellen.</small></span></label>
+          <label class="opt"><input type="radio" name="xlsxMode" value="one">
+            <span><strong>Alles in einem Blatt</strong><small>Gut, wenn eine Tabelle über mehrere Seiten geht.</small></span></label>
+          <p class="note">Tavi ordnet Text anhand seiner Position in Spalten ein. Zahlen wie 1.234,56 werden zu echten Zahlen. Klappt am besten bei PDFs mit klaren Tabellen.</p>
+        </div>
+        <div class="fmt-opts" data-fmt="jpeg" hidden>
+          <div class="seg" role="radiogroup" aria-label="Auflösung">
+            <label><input type="radio" name="jpegDpi" value="96"><span><strong>Bildschirm</strong><small>96 dpi, kleine Dateien</small></span></label>
+            <label><input type="radio" name="jpegDpi" value="150" checked><span><strong>Standard</strong><small>150 dpi</small></span></label>
+            <label><input type="radio" name="jpegDpi" value="300"><span><strong>Druck</strong><small>300 dpi, sehr scharf</small></span></label>
+          </div>
+          <p class="note">Bei mehreren Seiten wählst du einen Ordner, jede Seite wird ein eigenes Bild.</p>
+        </div>
+
+        <div class="ex-label">Welche Seiten?</div>
+        <div class="ex-range">
+          <input id="exRange" type="text" spellcheck="false" autocomplete="off" placeholder="alle Seiten, oder z. B. 1-5, 8" aria-label="Seiten">
+          <button id="exAll" class="btn ghost small" type="button">Alle</button>
+          <button id="exCurrent" class="btn ghost small" type="button">Aktuelle Seite</button>
+          <span id="exCount" class="muted"></span>
+        </div>
+        <p id="exError" class="range-error" hidden></p>
+      </div>
+      <div id="exProgress" class="ex-progress" hidden>
+        <div class="bar"><span id="exBar"></span></div>
+        <span id="exStatus" class="muted"></span>
+      </div>
+      <footer class="merge-foot">
+        <span id="exSummary" class="summary"></span>
+        <button id="exCancel" class="btn ghost" type="button">Schließen</button>
+        <button id="exGo" class="btn primary" type="button">Umwandeln und speichern …</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="sigDlg" class="sigdlg" aria-labelledby="sigTitle">
+    <div class="sig-wrap">
+      <h2 id="sigTitle">Unterschrift</h2>
+      <div id="sigSavedWrap" class="sig-saved-wrap" hidden>
+        <div class="ex-label">Gespeicherte Unterschrift verwenden</div>
+        <div id="sigSaved" class="sig-saved"></div>
+        <div class="ex-label">oder neu unterschreiben</div>
+      </div>
+      <div class="sig-padbox">
+        <canvas id="sigPad" class="sig-pad" aria-label="Zeichenfläche für die Unterschrift"></canvas>
+        <span id="sigEmpty" class="sig-empty">Hier mit Maus, Stift oder Finger unterschreiben</span>
+        <span class="sig-line" aria-hidden="true"></span>
+      </div>
+      <div class="sig-row">
+        <button type="button" id="sigClear" class="btn ghost small">Löschen</button>
+        <label class="btn ghost small sig-upload" for="sigFile">Foto der Unterschrift laden …<input type="file" id="sigFile" accept="image/*" hidden></label>
+        <span class="spacer"></span>
+        <label class="check" for="sigRemember"><input type="checkbox" id="sigRemember" checked> für später merken</label>
+      </div>
+      <p id="sigError" class="range-error" hidden></p>
+      <p class="note">Gespeicherte Unterschriften liegen verschlüsselt nur auf diesem PC.</p>
+      <div class="actions">
+        <span class="spacer"></span>
+        <button type="button" id="sigCancel" class="btn ghost">Abbrechen</button>
+        <button type="button" id="sigOk" class="btn primary">Einfügen</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="pwDlg" class="smalldlg" aria-labelledby="pwTitle">
+    <form id="pwForm" method="dialog" class="sd-wrap">
+      <h2 id="pwTitle">Passwort erforderlich</h2>
+      <p id="pwText" class="muted"></p>
+      <label class="field" for="pwInput">Passwort<input id="pwInput" type="password" autocomplete="off"></label>
+      <p id="pwError" class="range-error" hidden>Das Passwort stimmt nicht. Versuch es noch einmal.</p>
+      <div class="actions"><span class="spacer"></span><button type="button" id="pwCancel" class="btn ghost">Abbrechen</button><button type="submit" class="btn primary">Öffnen</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="printDlg" class="smalldlg" aria-labelledby="printTitle">
+    <div class="sd-wrap">
+      <h2 id="printTitle">Drucken</h2>
+      <fieldset class="print-opts">
+        <legend>Welche Seiten?</legend>
+        <label class="check-row"><input type="radio" name="printWhich" value="all" checked> Alle Seiten <span id="printAllCount" class="muted"></span></label>
+        <label class="check-row"><input type="radio" name="printWhich" value="current"> Aktuelle Seite</label>
+        <label class="check-row"><input type="radio" name="printWhich" value="range"> Seiten <input id="printRange" type="text" placeholder="z. B. 1-3, 5" class="print-range" aria-label="Seitenbereich"></label>
+      </fieldset>
+      <div class="print-grid">
+        <label>Seiten pro Blatt <select id="printNup"><option value="1">1</option><option value="2">2 (nebeneinander)</option><option value="4">4</option></select></label>
+        <label>Beidseitig <select id="printDuplex"><option value="simplex">Nein, einseitig</option><option value="longEdge">Ja, an der langen Kante</option><option value="shortEdge">Ja, an der kurzen Kante</option></select></label>
+        <label>Kopien <input id="printCopies" type="number" min="1" max="99" value="1"></label>
+      </div>
+      <p id="printError" class="range-error" hidden></p>
+      <p id="printStatus" class="muted"></p>
+      <p class="note">Im nächsten Schritt öffnet sich der Windows-Druckdialog mit diesen Einstellungen. Dort wählst du den Drucker. Jede Seite wird automatisch ans Blatt angepasst.</p>
+      <div class="actions"><span class="spacer"></span><button type="button" id="printCancel" class="btn ghost">Abbrechen</button><button type="button" id="printGo" class="btn primary">Weiter zum Drucken …</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="aiDlg" class="smalldlg" aria-labelledby="aiTitle">
+    <div class="sd-wrap">
+      <h2 id="aiTitle">Bevor du die KI nutzt</h2>
+      <p>Für Antworten schickt Tavi Text aus dem Dokument über das Internet an den KI-Dienst, den du in den Einstellungen gewählt hast (Google Gemini oder Groq). Alles andere, also Lesen, Ausfüllen, Unterschreiben, Zusammenführen und Umwandeln, bleibt immer auf deinem PC.</p>
+      <ul class="ai-list">
+        <li>Beim Erklären einer markierten Stelle wird nur diese Seite gesendet, bei freien Fragen das Dokument.</li>
+        <li>Bei Fragen zu Bildern wird ein Bild der Seite oder des gewählten Ausschnitts gesendet, bei eingescannten Seiten automatisch die Seite als Bild.</li>
+        <li>Für vertrauliche Dokumente (Verträge, Arztbriefe, Personalunterlagen) schalte oben im KI-Assistenten <strong>„Vertraulich“</strong> ein. Dann geht für dieses Dokument nichts an die KI.</li>
+        <li>Google und Groq speichern Anfragen eine begrenzte Zeit, etwa zur Missbrauchskontrolle.</li>
+      </ul>
+      <div class="actions"><span class="spacer"></span><button type="button" id="aiCancel" class="btn ghost">Abbrechen</button><button type="button" id="aiOk" class="btn primary">Verstanden, weiter</button></div>
+    </div>
+  </dialog>
+
+  <div id="printArea" class="print-area" aria-hidden="true"></div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="vendor/pdf-lib.min.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="vendor/docx.iife.js"></script>
+  <script src="vendor/pptxgen.bundle.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

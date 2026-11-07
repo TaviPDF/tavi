@@ -1,20 +1,42 @@
 # Tavi
 
-**Tavi ist ein PDF-Reader mit KI für Windows.** Texte zusammenfassen und erklären lassen, PDFs zusammenführen und in Word, PowerPoint, Excel oder JPEG umwandeln.
+**Tavi ist ein PDF-Reader mit KI für Windows und Mac.** Lesen, markieren, ausfüllen, unterschreiben, umwandeln und mit der KI Texte und Bilder erklären lassen.
 
 ## Funktionen
 
-- PDFs lesen, mehrere gleichzeitig in Tabs
-- Text markieren und von der KI **erklären** oder **zusammenfassen** lassen
-- Fragen zum Dokument stellen, mit Quellen: Ein Klick springt zur genauen Textstelle
-- PDFs **zusammenführen**, Seiten per Bereich (z. B. `1-5, 8`) oder per Klick auswählen
-- **Umwandeln** in Word (.docx), PowerPoint (.pptx), Excel (.xlsx) oder JPEG-Bilder
-- Automatische Updates
+- **KI-Assistent:** Texte erklären, zusammenfassen, übersetzen und Fragen zum Dokument stellen. Jede Antwort zeigt die Quelle, ein Klick springt zur genauen Textstelle. Fragen auch über alle offenen PDFs gleichzeitig.
+- **KI versteht Bilder:** Diagramme, Tabellen, Fotos und Grafiken erklären lassen, eingescannte Seiten werden automatisch gelesen.
+- **Kommentieren:** Textmarker, Unterstreichen, Durchstreichen, Notizen, Stift, Rechteck, Pfeil, Stempel. Gespeichert als normale PDF-Anmerkungen.
+- **Ausfüllen & Unterschreiben:** Formularfelder werden automatisch erkannt, „Meine Daten“ mit einem Klick eintragen.
+- **Seiten:** löschen, drehen, umsortieren, einfügen, aufteilen, zusammenführen, Bilder zu PDF.
+- **Werkzeuge:** Umwandeln in Word, PowerPoint, Excel, JPEG · Texterkennung (OCR) · Verkleinern · echtes Schwärzen · Passwortschutz · Versionen vergleichen.
+- **Lesen:** Suchen mit Trefferliste, Seitenleiste mit Vorschau und Inhaltsverzeichnis, Doppelseite, Präsentationsmodus, Vorlesen, Drucken mit mehreren Seiten pro Blatt.
+- **Datenschutz:** Alles außer der KI läuft nur auf deinem Rechner. Mit „Vertraulich“ schaltest du die KI für einzelne Dokumente ab.
+- Automatische Updates.
 
 ## Installieren
 
-1. Unter **[Releases](../../releases/latest)** die neueste `Tavi-Setup-….exe` herunterladen.
-2. Ausführen. Zeigt Windows „Der Computer wurde durch Windows geschützt“, auf **„Weitere Informationen“** und **„Trotzdem ausführen“** klicken.
-3. Für die KI einen kostenlosen Schlüssel von [Google AI Studio](https://aistudio.google.com/apikey) holen und in Tavi unter ⚙ Einstellungen einfügen.
+**Windows:** Am einfachsten über den Microsoft Store („Tavi PDF“). Oder unter **[Releases](../../releases/latest)** die neueste `Tavi-Setup-….exe` herunterladen und ausführen. Zeigt Windows „Der Computer wurde durch Windows geschützt“, auf **„Weitere Informationen“** und **„Trotzdem ausführen“** klicken.
 
-Dein API-Schlüssel und deine Einstellungen bleiben immer nur auf deinem PC.
+**Mac:** Unter **[Releases](../../releases/latest)** die passende ZIP-Datei laden: `…-mac-AppleSilicon.zip` für M1–M4, `…-mac-Intel.zip` für ältere Macs. Entpacken und Tavi in „Programme“ ziehen. Beim ersten Start unter Systemeinstellungen → Datenschutz & Sicherheit auf „Dennoch öffnen“ klicken. Meldet macOS „beschädigt“, im Terminal einmal `xattr -cr /Applications/Tavi.app` ausführen.
+
+**KI:** Einen kostenlosen Schlüssel von [Google AI Studio](https://aistudio.google.com/apikey) holen und in Tavi unter ⚙ Einstellungen einfügen. Dein API-Schlüssel und deine Einstellungen bleiben immer nur auf deinem Rechner.
+
+## Entwicklung
+
+Tavi ist eine Electron-App (Electron 38, pdf.js 6).
+
+```
+npm install
+npm start
+```
+
+| Ordner/Datei | Inhalt |
+|---|---|
+| `main.js`, `preload.js` | Hauptprozess: Dateien, Einstellungen, KI-Anfragen, Menü |
+| `updater.js` | automatische Updates über die GitHub-Releases |
+| `src/` | Oberfläche: `app.js` (Kern), `features.js` (Reiter, Werkzeuge), `annotate.js`, `fill.js`, `forms.js`, `pages.js`, `tools.js` (OCR, Schwärzen, Verkleinern), `pdfcrypt.js` (Passwörter), `vision.js` (Bilder für die KI), `export.js`, `merge.js` |
+| `src/vendor/` | mitgelieferte Bibliotheken (pdf-lib, docx, PptxGenJS, JSZip, Tesseract) |
+| `build/` | Icons, NSIS-Installer, Skripte für Release (`release.py`), Mac (`mac.py`) und Microsoft Store (`store.py`) |
+
+Verwendete Bibliotheken: pdf.js und Tesseract (Apache 2.0), pdf-lib, docx, PptxGenJS, JSZip (jeweils MIT). Lizenztexte liegen in `src/vendor/`.

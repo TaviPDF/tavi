@@ -1,0 +1,79 @@
+{
+  "name": "tavi",
+  "productName": "Tavi",
+  "version": "1.4.4",
+  "description": "PDF-Reader mit KI-Assistent zum Zusammenfassen und Erklären",
+  "main": "main.js",
+  "author": "Tavi",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win nsis --x64",
+    "build:mac": "electron-builder --mac dmg",
+    "build:linux": "electron-builder --linux AppImage"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.2.108"
+  },
+  "devDependencies": {
+    "electron": "38.0.0",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "de.tavi.app",
+    "productName": "Tavi",
+    "copyright": "Tavi",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "updater.js",
+      "src/**/*",
+      "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF-Dokument",
+        "role": "Viewer"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tavi",
+      "language": "1031",
+      "installerLanguages": [
+        "de_DE"
+      ],
+      "artifactName": "Tavi-Setup-${version}.exe",
+      "uninstallDisplayName": "Tavi"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "category": "Office",
+      "icon": "build/icon.png"
+    }
+  },
+  "updateRepo": "TaviPDF/tavi"
+}
