@@ -37,15 +37,31 @@ function newer(a, b) {
   return false;
 }
 
+// GitHub antwortet manchmal kurz mit 5xx (z. B. 504) – dann mit Pause nochmal versuchen
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const busyMsg = (status) => `GitHub ist gerade überlastet (Fehler ${status}). Tavi versucht es später automatisch noch einmal.`;
+async function fetchRetry(url) {
+  let last;
+  for (const wait of [0, 3000, 10000, 25000]) {
+    if (wait) await sleep(wait);
+    try {
+      const r = await net.fetch(url, { cache: 'no-store', headers: { 'User-Agent': 'Tavi-Updater' } });
+      if (r.status < 500) return r;
+      last = new Error(busyMsg(r.status));
+    } catch (e) { last = new Error('Keine Verbindung zu GitHub. Tavi versucht es später automatisch noch einmal.'); }
+  }
+  throw last;
+}
+
 async function getJson(url) {
-  const r = await net.fetch(url, { cache: 'no-store', headers: { 'User-Agent': 'Tavi-Updater' } });
+  const r = await fetchRetry(url);
   if (r.status === 404) throw Object.assign(new Error('Auf GitHub ist noch keine Version veröffentlicht.'), { code: 'none' });
   if (!r.ok) throw new Error(`GitHub antwortet mit Fehler ${r.status}.`);
   return r.json();
 }
 
 async function download(url, size) {
-  const r = await net.fetch(url, { cache: 'no-store', headers: { 'User-Agent': 'Tavi-Updater' } });
+  const r = await fetchRetry(url);
   if (!r.ok || !r.body) throw new Error(`Download fehlgeschlagen (Fehler ${r.status}).`);
   const total = Number(r.headers.get('content-length')) || size || 0;
   const reader = r.body.getReader();
