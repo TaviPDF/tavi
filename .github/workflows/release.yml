@@ -21,7 +21,7 @@ jobs:
     env:
       ELECTRON: 38.0.0
       PDFJS: 6.2.108
-      RCODESIGN_VER: 0.29.0
+      RCS_VER: 0.29.0
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -54,9 +54,9 @@ jobs:
           mv "electron-v$ELECTRON-win32-x64.zip" electron-win.zip
           mv "electron-v$ELECTRON-darwin-arm64.zip" electron-darwin-arm64.zip
           mv "electron-v$ELECTRON-darwin-x64.zip" electron-darwin-x64.zip
-          get rcs.tgz "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F$RCODESIGN_VER/apple-codesign-$RCODESIGN_VER-x86_64-unknown-linux-musl.tar.gz"
+          get rcs.tgz "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F$RCS_VER/apple-codesign-$RCS_VER-x86_64-unknown-linux-musl.tar.gz"
           tar xzf rcs.tgz
-          echo "RCODESIGN=$B/dl/apple-codesign-$RCODESIGN_VER-x86_64-unknown-linux-musl/rcodesign" >> "$GITHUB_ENV"
+          echo "RCODESIGN=$B/dl/apple-codesign-$RCS_VER-x86_64-unknown-linux-musl/rcodesign" >> "$GITHUB_ENV"
 
       - name: Windows bauen (Installer, App-Paket, latest.json)
         if: steps.v.outputs.skip != '1'
