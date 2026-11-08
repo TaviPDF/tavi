@@ -1,0 +1,86 @@
+# Baut Tavi für Windows und Mac und veröffentlicht das Release, sobald ein Tag wie v1.4.6 gepusht wird.
+# Vorher: Version in package.json erhöhen und die Patch-Notes in notes/VERSION.md ablegen.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag, z. B. v1.4.5'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      ELECTRON: 38.0.0
+      PDFJS: 6.2.108
+      RCODESIGN_VER: 0.29.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Version prüfen
+        run: |
+          VER="${TAG#v}"
+          test "$(node -p "require('./package.json').version")" = "$VER" || { echo "package.json passt nicht zu $TAG"; exit 1; }
+          test -f "notes/$VER.md" || { echo "notes/$VER.md fehlt"; exit 1; }
+          echo "VER=$VER" >> "$GITHUB_ENV"
+
+      - name: Werkzeuge installieren
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q nsis zip unzip
+          pip install --quiet pefile pillow
+          npm install --no-save --silent --prefix "$RUNNER_TEMP/npm" "pdfjs-dist@$PDFJS"
+
+      - name: Electron und rcodesign laden
+        run: |
+          B="$RUNNER_TEMP/bau"; mkdir -p "$B/dl"; cd "$B/dl"
+          get() { curl -fsSL --retry 6 --retry-all-errors --retry-delay 5 -o "$1" "$2"; }
+          base="https://github.com/electron/electron/releases/download/v$ELECTRON"
+          get SHASUMS256.txt "$base/SHASUMS256.txt"
+          for a in win32-x64 darwin-arm64 darwin-x64; do get "electron-v$ELECTRON-$a.zip" "$base/electron-v$ELECTRON-$a.zip"; done
+          grep -E " \*electron-v$ELECTRON-(win32-x64|darwin-arm64|darwin-x64)\.zip$" SHASUMS256.txt | sha256sum -c -
+          mv "electron-v$ELECTRON-win32-x64.zip" electron-win.zip
+          mv "electron-v$ELECTRON-darwin-arm64.zip" electron-darwin-arm64.zip
+          mv "electron-v$ELECTRON-darwin-x64.zip" electron-darwin-x64.zip
+          get rcs.tgz "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F$RCODESIGN_VER/apple-codesign-$RCODESIGN_VER-x86_64-unknown-linux-musl.tar.gz"
+          tar xzf rcs.tgz
+          echo "RCODESIGN=$B/dl/apple-codesign-$RCODESIGN_VER-x86_64-unknown-linux-musl/rcodesign" >> "$GITHUB_ENV"
+
+      - name: Windows bauen (Installer, App-Paket, latest.json)
+        env:
+          TAVI_SRC: ${{ github.workspace }}
+          TAVI_PDFJS: ${{ runner.temp }}/npm/node_modules/pdfjs-dist
+          MAKENSIS: makensis
+        run: |
+          export TAVI_BAU="$RUNNER_TEMP/bau"
+          python3 build/release.py "$VER" "@notes/$VER.md"
+
+      - name: Mac bauen
+        run: python3 build/mac.py "$RUNNER_TEMP/bau"
+
+      - name: Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          B="$RUNNER_TEMP/bau"
+          files=("$B/release-$VER/Tavi-Setup-$VER.exe" "$B/release-$VER/tavi-app-$VER.json.gz" "$B/release-$VER/latest.json" \
+                 "$B/mac-$VER/Tavi-$VER-mac-AppleSilicon.zip" "$B/mac-$VER/Tavi-$VER-mac-Intel.zip")
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+            gh release edit "$TAG" --title "Tavi $VER" --notes-file "notes/$VER.md" --latest
+          else
+            gh release create "$TAG" "${files[@]}" --title "Tavi $VER" --notes-file "notes/$VER.md" --latest
+          fi

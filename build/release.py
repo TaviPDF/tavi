@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 """Baut ein komplettes Tavi-Release: Windows-Programmordner, Installer, App-Paket und latest.json.
-Aufruf: release.py VERSION "Hinweise zur Version" """
+Aufruf: release.py VERSION "Hinweise zur Version"   (oder @datei.md für Hinweise aus einer Datei)
+Pfade lassen sich per Umgebung setzen (für GitHub Actions): TAVI_BAU, TAVI_SRC, TAVI_PDFJS, MAKENSIS """
 import base64, gzip, hashlib, io, json, os, shutil, struct, subprocess, sys, zipfile
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'py', 'pefile-2024.8.26'))
-import pefile
+try:
+    import pefile
+except ImportError:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'py', 'pefile-2024.8.26'))
+    import pefile
 from PIL import Image
 
-B = os.path.dirname(os.path.abspath(__file__))
-SRC = '/home/claude/lesepult'
-PDFJS = '/opt/npm-tools/node_modules/pdfjs-dist'
+B = os.environ.get('TAVI_BAU') or os.path.dirname(os.path.abspath(__file__))
+SRC = os.environ.get('TAVI_SRC') or '/home/claude/lesepult'
+PDFJS = os.environ.get('TAVI_PDFJS') or '/opt/npm-tools/node_modules/pdfjs-dist'
 ELECTRON = '38.0.0'
 ver, notes = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else '')
+if notes.startswith('@'):
+    # Markdown-Datei → schlichter Text für das Update-Fenster in Tavi
+    import re
+    lines = [l.strip() for l in open(notes[1:], encoding='utf-8').read().splitlines()]
+    lines = [re.sub(r'\*\*|`', '', re.sub(r'^[-*]\s+', '• ', l)) for l in lines if l and not l.startswith('#') and not l.startswith('**Downloads')]
+    notes = '\n'.join(lines)
 pkg = json.load(open(f'{SRC}/package.json'))
 assert pkg['version'] == ver, f"package.json hat {pkg['version']}, erwartet {ver}"
 pdfjs_ver = json.load(open(f'{PDFJS}/package.json'))['version']
@@ -83,7 +93,11 @@ open(exe, 'wb').write(raw)
 
 # 3) Installer
 shutil.copy(f'{SRC}/build/icon.ico', f'{B}/icon.ico')
-subprocess.run([f'{B}/nsis/linux/makensis', '-V2', f'-DVER={ver}', 'tavi.nsi'], cwd=B, check=True, env={**os.environ, 'NSISDIR': f'{B}/nsis'})
+shutil.copy(f'{SRC}/build/tavi.nsi', f'{B}/tavi.nsi')
+if os.environ.get('MAKENSIS'):
+    subprocess.run([os.environ['MAKENSIS'], '-V2', f'-DVER={ver}', 'tavi.nsi'], cwd=B, check=True)
+else:
+    subprocess.run([f'{B}/nsis/linux/makensis', '-V2', f'-DVER={ver}', 'tavi.nsi'], cwd=B, check=True, env={**os.environ, 'NSISDIR': f'{B}/nsis'})
 setup = f'Tavi-Setup-{ver}.exe'
 shutil.move(f'{B}/{setup}', f'{out}/{setup}')
 

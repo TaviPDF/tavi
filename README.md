@@ -32,6 +32,8 @@ npm install
 npm start
 ```
 
+**Neue Version veröffentlichen:** Version in `package.json` erhöhen, Patch-Notes in `notes/VERSION.md` schreiben, committen und den Tag pushen (`git tag v1.4.6 && git push origin v1.4.6`). GitHub baut dann Windows- und Mac-Version und legt das Release an.
+
 | Ordner/Datei | Inhalt |
 |---|---|
 | `main.js`, `preload.js` | Hauptprozess: Dateien, Einstellungen, KI-Anfragen, Menü |
@@ -39,6 +41,8 @@ npm start
 | `src/` | Oberfläche: `app.js` (Kern), `features.js` (Reiter, Werkzeuge), `annotate.js`, `fill.js`, `forms.js`, `pages.js`, `tools.js` (OCR, Schwärzen, Verkleinern), `pdfcrypt.js` (Passwörter), `vision.js` (Bilder für die KI), `export.js`, `merge.js` |
 | `src/vendor/` | mitgelieferte Bibliotheken (pdf-lib, docx, PptxGenJS, JSZip, Tesseract) |
 | `build/` | Icons, NSIS-Installer, Skripte für Release (`release.py`), Mac (`mac.py`) und Microsoft Store (`store.py`) |
+| `notes/` | Patch-Notes je Version (`1.4.5.md` …), werden zum Text des Releases |
+| `.github/workflows/release.yml` | baut und veröffentlicht automatisch, sobald ein Tag `vX.Y.Z` gepusht wird |
 
 ## Lizenz
 
