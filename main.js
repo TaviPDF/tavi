@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage, nativeTheme, protocol, net, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
@@ -48,7 +48,8 @@ function registerAppProtocol() {
 
 const AUTO = 'auto';
 const RESOLVE_MAX_AGE = 3 * 24 * 60 * 60 * 1000; // alle 3 Tage neu prüfen, ob es bessere Modelle gibt
-let win = null;
+let win = null; // zuletzt aktives Fenster
+const owner = () => BrowserWindow.getFocusedWindow() || win;
 let pendingPath = null;
 
 /* ---------- Einstellungen (lokal im Benutzerordner, Schlüssel verschlüsselt) ---------- */
@@ -317,17 +318,17 @@ ipcMain.handle('settings:set', (_e, p) => {
 
 /* ---------- Dateien ---------- */
 ipcMain.handle('file:open', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'PDF öffnen', properties: ['openFile'], filters: [{ name: 'PDF-Dokumente', extensions: ['pdf'] }] });
+  const r = await dialog.showOpenDialog(owner(), { title: 'PDF öffnen', properties: ['openFile'], filters: [{ name: 'PDF-Dokumente', extensions: ['pdf'] }] });
   if (r.canceled || !r.filePaths[0]) return null;
   return readPdf(r.filePaths[0]);
 });
 ipcMain.handle('file:openMany', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'PDFs zum Zusammenführen wählen', properties: ['openFile', 'multiSelections'], filters: [{ name: 'PDF-Dokumente', extensions: ['pdf'] }] });
+  const r = await dialog.showOpenDialog(owner(), { title: 'PDFs zum Zusammenführen wählen', properties: ['openFile', 'multiSelections'], filters: [{ name: 'PDF-Dokumente', extensions: ['pdf'] }] });
   if (r.canceled) return [];
   return r.filePaths.map(readPdf).filter(Boolean);
 });
 ipcMain.handle('file:save', async (_e, { data, name }) => {
-  const r = await dialog.showSaveDialog(win, {
+  const r = await dialog.showSaveDialog(owner(), {
     title: 'Zusammengeführtes PDF speichern',
     defaultPath: path.join(app.getPath('documents'), name || 'Zusammengeführt.pdf'),
     filters: [{ name: 'PDF-Dokument', extensions: ['pdf'] }]
@@ -342,7 +343,7 @@ ipcMain.handle('file:save', async (_e, { data, name }) => {
 });
 // Umwandeln: eine Datei speichern (Dateityp frei wählbar)
 ipcMain.handle('file:saveAs', async (_e, { data, name, filterName, ext }) => {
-  const r = await dialog.showSaveDialog(win, {
+  const r = await dialog.showSaveDialog(owner(), {
     title: 'Umgewandelte Datei speichern',
     defaultPath: path.join(app.getPath('documents'), name),
     filters: [{ name: filterName, extensions: [ext] }]
@@ -353,7 +354,7 @@ ipcMain.handle('file:saveAs', async (_e, { data, name, filterName, ext }) => {
 });
 // Umwandeln: Zielordner wählen (für mehrere Bilder)
 ipcMain.handle('folder:pick', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Ordner für die Bilder wählen', defaultPath: app.getPath('pictures'), properties: ['openDirectory', 'createDirectory'] });
+  const r = await dialog.showOpenDialog(owner(), { title: 'Ordner für die Bilder wählen', defaultPath: app.getPath('pictures'), properties: ['openDirectory', 'createDirectory'] });
   if (r.canceled || !r.filePaths[0]) return null;
   return r.filePaths[0];
 });
@@ -402,12 +403,12 @@ function readImage(p) {
   try { return { name: path.basename(p), path: p, data: fs.readFileSync(p), image: true }; } catch { return null; }
 }
 ipcMain.handle('file:openDocs', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'PDF öffnen', properties: ['openFile', 'multiSelections'], filters: [{ name: 'PDFs und Bilder', extensions: ['pdf', ...IMG_EXT] }, { name: 'PDF-Dokumente', extensions: ['pdf'] }] });
+  const r = await dialog.showOpenDialog(owner(), { title: 'PDF öffnen', properties: ['openFile', 'multiSelections'], filters: [{ name: 'PDFs und Bilder', extensions: ['pdf', ...IMG_EXT] }, { name: 'PDF-Dokumente', extensions: ['pdf'] }] });
   if (r.canceled) return [];
   return r.filePaths.map(p => (/\.pdf$/i.test(p) ? readPdf(p) : readImage(p))).filter(Boolean);
 });
 ipcMain.handle('file:openImages', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Bilder für das PDF wählen', defaultPath: app.getPath('pictures'), properties: ['openFile', 'multiSelections'], filters: [{ name: 'Bilder', extensions: IMG_EXT }] });
+  const r = await dialog.showOpenDialog(owner(), { title: 'Bilder für das PDF wählen', defaultPath: app.getPath('pictures'), properties: ['openFile', 'multiSelections'], filters: [{ name: 'Bilder', extensions: IMG_EXT }] });
   if (r.canceled) return [];
   return r.filePaths.map(readImage).filter(Boolean);
 });
@@ -426,7 +427,7 @@ ipcMain.handle('file:writeBack', async (_e, { path: p, data }) => {
   }
 });
 ipcMain.handle('file:savePdfAs', async (_e, { data, name, dir }) => {
-  const r = await dialog.showSaveDialog(win, {
+  const r = await dialog.showSaveDialog(owner(), {
     title: 'PDF speichern',
     defaultPath: path.join(dir && fs.existsSync(dir) ? dir : app.getPath('documents'), name || 'Dokument.pdf'),
     filters: [{ name: 'PDF-Dokument', extensions: ['pdf'] }]
@@ -460,17 +461,77 @@ function addRecent(p) {
 ipcMain.handle('recent:list', () => (loadState().recent || []).filter(p => fs.existsSync(p)).map(p => ({ path: p, name: path.basename(p), dir: path.dirname(p) })));
 ipcMain.handle('recent:clear', () => { const st = loadState(); st.recent = []; saveState(st); return true; });
 ipcMain.handle('file:openPath', (_e, p) => (typeof p === 'string' && /\.pdf$/i.test(p) && fs.existsSync(p) ? readPdf(p) : null));
-ipcMain.handle('session:save', (_e, list) => { const st = loadState(); st.session = Array.isArray(list) ? list.slice(0, 30) : []; saveState(st); return true; });
+// Jedes Fenster meldet seine Tabs, gespeichert wird die Summe aller Fenster
+const sessionParts = new Map();
+function writeSession() { const st = loadState(); st.session = [...sessionParts.values()].flat().slice(0, 30); saveState(st); }
+ipcMain.handle('session:save', (e, list) => { sessionParts.set(e.sender.id, Array.isArray(list) ? list.slice(0, 30) : []); writeSession(); return true; });
 ipcMain.handle('session:load', () => (loadState().session || []).filter(t => t?.path && fs.existsSync(t.path)));
 // Drucken über den Windows-Druckdialog
-ipcMain.handle('print:run', (_e, o = {}) => new Promise((res) => {
-  if (!win) return res({ ok: false });
+ipcMain.handle('print:run', (e, o = {}) => new Promise((res) => {
   const opts = { silent: false, printBackground: true, margins: { marginType: 'none' }, landscape: !!o.landscape };
   if (['simplex', 'longEdge', 'shortEdge'].includes(o.duplexMode)) opts.duplexMode = o.duplexMode;
   if (Number.isInteger(o.copies) && o.copies > 1 && o.copies < 100) opts.copies = o.copies;
-  win.webContents.print(opts, (ok, reason) => res({ ok, reason }));
+  e.sender.print(opts, (ok, reason) => res({ ok, reason }));
 }));
-ipcMain.handle('win:fullscreen', (_e, on) => { if (!win) return false; win.setFullScreen(typeof on === 'boolean' ? on : !win.isFullScreen()); return win.isFullScreen(); });
+ipcMain.handle('win:fullscreen', (e, on) => { const w = BrowserWindow.fromWebContents(e.sender); if (!w) return false; w.setFullScreen(typeof on === 'boolean' ? on : !w.isFullScreen()); return w.isFullScreen(); });
+ipcMain.handle('win:close', (e) => { BrowserWindow.fromWebContents(e.sender)?.close(); });
+
+/* ---------- Tabs in eigene Fenster ziehen ---------- */
+// Tab aus dem Fenster gezogen: neues Fenster dort öffnen, wo die Maus losgelassen wurde
+ipcMain.handle('tab:tearOff', (e, payload, mode) => {
+  const src = BrowserWindow.fromWebContents(e.sender);
+  if (!src || !payload?.data) return false;
+  const pt = screen.getCursorScreenPoint();
+  const b = src.getBounds();
+  const inside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
+  if (mode === 'drop' && inside) return false; // im eigenen Fenster losgelassen
+  const area = screen.getDisplayMatching(b).workArea;
+  if (mode === 'side') {
+    if (src.isFullScreen()) src.setFullScreen(false);
+    if (src.isMaximized()) src.unmaximize();
+    const half = Math.floor(area.width / 2);
+    src.setBounds({ x: area.x, y: area.y, width: half, height: area.height });
+    createWindow({ payload, bounds: { x: area.x + half, y: area.y, width: area.width - half, height: area.height } });
+    return true;
+  }
+  let bounds;
+  if (mode === 'drop') {
+    const d = screen.getDisplayNearestPoint(pt).workArea;
+    const width = Math.min(Math.max(900, Math.round(b.width * 0.8)), d.width), height = Math.min(Math.max(600, Math.round(b.height * 0.9)), d.height);
+    // Die Tableiste landet ungefähr unter der Maus
+    const x = Math.min(Math.max(d.x, pt.x - 120), d.x + d.width - width), y = Math.min(Math.max(d.y, pt.y - 60), d.y + d.height - height);
+    bounds = { x, y, width, height };
+  } else {
+    bounds = { x: Math.min(b.x + 40, area.x + area.width - 900), y: Math.min(b.y + 40, area.y + area.height - 600), width: b.width, height: b.height };
+  }
+  createWindow({ payload, bounds });
+  return true;
+});
+// Tab in ein anderes Tavi-Fenster gezogen: das Quellfenster gibt ihn ab
+const pulls = new Map();
+let pullSeq = 1;
+ipcMain.handle('tab:pull', (e, srcId, tabId) => new Promise((res) => {
+  const src = BrowserWindow.getAllWindows().find(w => w.webContents.id === Number(srcId));
+  if (!src || src.webContents === e.sender) return res(null);
+  const id = pullSeq++;
+  const t = setTimeout(() => { pulls.delete(id); res(null); }, 30000);
+  pulls.set(id, (p) => { clearTimeout(t); pulls.delete(id); res(p); });
+  src.webContents.send('tab:give', { id, tabId });
+}));
+ipcMain.handle('tab:given', (_e, id, payload) => { pulls.get(id)?.(payload || null); return true; });
+ipcMain.handle('win:id', (e) => e.sender.id);
+ipcMain.handle('tab:menu', (e, info = {}) => new Promise((res) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  const items = [
+    { label: 'In neuem Fenster öffnen', enabled: !!info.canDetach, click: () => res('window') },
+    { label: 'Nebeneinander anzeigen', enabled: !!info.canDetach, click: () => res('side') },
+    { type: 'separator' },
+    { label: 'Im Ordner zeigen', enabled: !!info.hasPath, click: () => res('folder') },
+    { type: 'separator' },
+    { label: 'Schließen', click: () => res('close') }
+  ];
+  Menu.buildFromTemplate(items).popup({ window: w, callback: () => setTimeout(() => res(null), 50) });
+}));
 ipcMain.handle('defaults:open', () => shell.openExternal('ms-settings:defaultapps'));
 function sendFile(p) {
   const f = readPdf(p);
@@ -481,7 +542,7 @@ ipcMain.handle('link:open', (_e, url) => {
 });
 
 /* ---------- Fenster & Menü ---------- */
-function send(cmd) { win?.webContents.send('menu', cmd); }
+function send(cmd) { owner()?.webContents.send('menu', cmd); }
 function buildMenu() {
   const tpl = [
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
@@ -498,6 +559,8 @@ function buildMenu() {
       { label: 'Texterkennung (OCR) …', click: () => send('ocr') },
       { label: 'Bilder zu PDF …', click: () => send('images') },
       { label: 'Tab schließen', accelerator: 'CmdOrCtrl+W', click: () => send('closeTab') },
+      { label: 'Neues Fenster', accelerator: 'CmdOrCtrl+N', click: () => createWindow({ empty: true }) },
+      { label: 'Tab in neues Fenster', accelerator: 'CmdOrCtrl+Shift+N', click: () => send('detachTab') },
       { type: 'separator' },
       { label: 'Einstellungen …', accelerator: 'CmdOrCtrl+,', click: () => send('settings') },
       { type: 'separator' },
@@ -520,7 +583,7 @@ function buildMenu() {
       { label: 'Nächster Tab', accelerator: 'Ctrl+Tab', click: () => send('nextTab') },
       { label: 'Vorheriger Tab', accelerator: 'Ctrl+Shift+Tab', click: () => send('prevTab') },
       { type: 'separator' },
-      { label: 'Vollbild', accelerator: 'F11', click: () => win?.setFullScreen(!win.isFullScreen()) },
+      { label: 'Vollbild', accelerator: 'F11', click: () => { const w = owner(); w?.setFullScreen(!w.isFullScreen()); } },
       { label: 'Präsentation', accelerator: 'F5', click: () => send('present') },
       { role: 'toggleDevTools', label: 'Entwicklertools' }
     ] }
@@ -528,22 +591,33 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(tpl));
 }
 
-function createWindow() {
-  win = new BrowserWindow({
-    width: 1400, height: 900, minWidth: 900, minHeight: 600,
+function createWindow(o = {}) {
+  const first = BrowserWindow.getAllWindows().length === 0;
+  const w = new BrowserWindow({
+    width: 1400, height: 900, minWidth: 900, minHeight: 600, ...(o.bounds || {}),
     title: 'Tavi',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#12161c' : '#eef1f4',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false }
   });
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  if (!win) win = w;
+  const wcId = w.webContents.id;
+  w.on('focus', () => { win = w; });
+  w.on('closed', () => {
+    // Tabs eines geschlossenen Fensters nicht wieder öffnen, außer es war das letzte (Programm wird beendet)
+    if (BrowserWindow.getAllWindows().length > 0 && sessionParts.delete(wcId)) writeSession();
+    if (win === w) win = BrowserWindow.getAllWindows()[0] || null;
+  });
+  w.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('will-navigate', (e) => e.preventDefault());
-  win.webContents.on('did-finish-load', () => {
-    if (pendingPath) { sendFile(pendingPath); pendingPath = null; }
+  w.webContents.on('will-navigate', (e) => e.preventDefault());
+  w.webContents.on('did-finish-load', () => {
+    if (o.payload) { w.webContents.send('tab:receive', o.payload); o.payload = null; }
+    if (first && pendingPath) { sendFile(pendingPath); pendingPath = null; }
   });
-  win.loadURL('app://tavi/src/index.html');
+  w.loadURL(first ? 'app://tavi/src/index.html' : 'app://tavi/src/index.html?fenster=2');
+  return w;
 }
 
 const argPdf = (argv) => argv.slice(1).find(a => a.toLowerCase().endsWith('.pdf') && fs.existsSync(a));

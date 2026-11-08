@@ -316,7 +316,7 @@ dialog.merge { width: min(1180px, 96vw); height: min(820px, 92vh); max-width: no
   padding: 6px 10px 0; background: var(--bg); border-bottom: 1px solid var(--line);
   min-width: 0;
 }
-.tab-list { display: flex; align-items: flex-end; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.tab-list { display: flex; align-items: flex-end; gap: 2px; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .tab {
   position: relative; display: flex; align-items: center; gap: 7px;
   flex: 0 1 240px; min-width: 120px; max-width: 270px; height: 34px;
@@ -673,3 +673,8 @@ body.snipping .page, body.snipping .page .textLayer, body.snipping .page .textLa
 .rb-body { padding-right: 40px; }
 .rb-close { position: absolute; right: 8px; bottom: 9px; width: 28px; height: 28px; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; display: grid; place-items: center; }
 .rb-close:hover { background: var(--bg); border-color: var(--line); color: var(--ink); }
+
+/* Tabs ziehen: umsortieren oder in eigenes Fenster */
+.tab.tab-dragging { opacity: .45; }
+.tab.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+.tab.drop-after { box-shadow: inset -3px 0 0 var(--accent); }

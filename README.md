@@ -10,6 +10,7 @@
 - **Ausfüllen & Unterschreiben:** Formularfelder werden automatisch erkannt, „Meine Daten“ mit einem Klick eintragen.
 - **Seiten:** löschen, drehen, umsortieren, einfügen, aufteilen, zusammenführen, Bilder zu PDF.
 - **Werkzeuge:** Umwandeln in Word, PowerPoint, Excel, JPEG · Texterkennung (OCR) · Verkleinern · echtes Schwärzen · Passwortschutz · Versionen vergleichen.
+- **Mehrere Fenster:** Einen Tab aus dem Fenster ziehen, und das PDF öffnet sich in einem eigenen Tavi-Fenster. So liegen zwei Dokumente nebeneinander. Tabs lassen sich auch zwischen Fenstern verschieben.
 - **Lesen:** Suchen mit Trefferliste, Seitenleiste mit Vorschau und Inhaltsverzeichnis, Doppelseite, Präsentationsmodus, Vorlesen, Drucken mit mehreren Seiten pro Blatt.
 - **Datenschutz:** Alles außer der KI läuft nur auf deinem Rechner. Mit „Vertraulich“ schaltest du die KI für einzelne Dokumente ab.
 - Automatische Updates.

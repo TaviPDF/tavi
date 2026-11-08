@@ -3,7 +3,7 @@
 //   latest.json                 Versionsnummer, Hinweise, Prüfsummen
 //   tavi-app-X.Y.Z.json.gz  nur der Programmcode (klein, schnell)
 //   Tavi-Setup-X.Y.Z.exe    kompletter Installer (falls sich Electron oder die PDF-Bibliothek ändert)
-const { app, net, ipcMain } = require('electron');
+const { app, net, ipcMain, BrowserWindow } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
@@ -27,8 +27,7 @@ const state = { status: STORE ? 'store' : (REPO ? 'idle' : 'off'), current: app.
 
 function emit(patch) {
   Object.assign(state, patch);
-  const w = ctx?.getWin();
-  if (w && !w.isDestroyed()) w.webContents.send('update:state', { ...state });
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('update:state', { ...state });
 }
 
 function newer(a, b) {

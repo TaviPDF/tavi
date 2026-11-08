@@ -1,7 +1,7 @@
 {
   "name": "tavi",
   "productName": "Tavi",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "PDF-Reader mit KI-Assistent zum Zusammenfassen und Erklären",
   "main": "main.js",
   "author": "Tavi",

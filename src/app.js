@@ -101,6 +101,7 @@ async function openPdf(data, name, opts = {}) {
   if (opts.page > 1) { const el = state.pages[opts.page - 1]?.el; if (el) $('viewer').scrollTop = el.offsetTop - 16; }
   saveSession();
   if (opts.path) refreshRecent();
+  return tab;
 }
 
 // Stand des aktiven Tabs merken (Position), bevor gewechselt wird
@@ -202,7 +203,8 @@ function renderTabs() {
     el.setAttribute('aria-selected', t === state.doc);
     el.tabIndex = t === state.doc ? 0 : -1;
     el.dataset.id = t.id;
-    el.title = `${t.name} · ${t.pdf.numPages} ${t.pdf.numPages === 1 ? 'Seite' : 'Seiten'}`;
+    el.draggable = true;
+    el.title = `${t.name} · ${t.pdf.numPages} ${t.pdf.numPages === 1 ? 'Seite' : 'Seiten'}${tabs.length > 1 ? '\nZum Nebeneinander-Lesen aus dem Fenster ziehen' : ''}`;
     el.innerHTML = '<span class="tab-icon" aria-hidden="true"></span><span class="tab-name"></span><button type="button" class="tab-close" aria-label="Tab schließen" title="Schließen (Strg+W)">×</button>';
     el.querySelector('.tab-name').textContent = t.name.replace(/\.pdf$/i, '');
     return el;
@@ -1134,11 +1136,12 @@ document.addEventListener('click', (e) => {
 
 // Ziehen & Ablegen
 const viewer = $('viewer');
-['dragenter', 'dragover'].forEach(t => viewer.addEventListener(t, (e) => { e.preventDefault(); viewer.classList.add('dragging'); }));
+['dragenter', 'dragover'].forEach(t => viewer.addEventListener(t, (e) => { e.preventDefault(); if (!isTabDrag(e)) viewer.classList.add('dragging'); }));
 ['dragleave', 'drop'].forEach(t => viewer.addEventListener(t, () => viewer.classList.remove('dragging')));
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', async (e) => {
   e.preventDefault();
+  if (isTabDrag(e)) return dropForeignTab(e);
   if ($('merge').open || $('export').open || $('sigDlg').open) return;
   const all = [...(e.dataTransfer?.files || [])];
   const pdfs = all.filter(x => /\.pdf$/i.test(x.name) || x.type === 'application/pdf');
@@ -1172,10 +1175,11 @@ api.onMenu((cmd) => {
     if (el?.matches?.('input, textarea, [contenteditable]')) document.execCommand(cmd);
     else if (cmd === 'undo') annotator.undo(); else annotator.redo();
   }
+  else if (cmd === 'detachTab') { if (state.doc) detachTab(state.doc, 'window'); }
   else if (cmd === 'nextTab') switchTab(1);
   else if (cmd === 'prevTab') switchTab(-1);
 });
-api.onOpenFile((f) => openPdf(f.data, f.name, { path: f.path }));
+api.onOpenFile((f) => { openPdf(f.data, f.name, { path: f.path }); });
 document.addEventListener('keydown', (e) => {
   if (e.target.closest('input, textarea, select, dialog, .tabbar')) return;
   if (e.key === 'ArrowRight') goToPage(state.current + 1);
@@ -1208,6 +1212,120 @@ $('tabList').addEventListener('keydown', (e) => {
     switchTab(e.key === 'ArrowRight' ? 1 : -1);
     $('tabList').querySelector('.tab.active')?.focus();
   } else if (e.key === 'Delete') { e.preventDefault(); if (state.doc) closeTab(state.doc); }
+});
+
+/* ================= Tabs in eigene Fenster ziehen ================= */
+// Tab aus dem Fenster ziehen → neues Tavi-Fenster an der Stelle. In ein anderes Tavi-Fenster ziehen → dort als Tab.
+const SECOND_WINDOW = new URLSearchParams(location.search).has('fenster');
+const TAB_MIME = 'application/x-tavi-tab';
+let myWinId = null, dragTab = null;
+api.win?.id().then(id => { myWinId = id; }).catch(() => {});
+function isTabDrag(e) { return !!dragTab || [...(e.dataTransfer?.types || [])].includes(TAB_MIME); }
+
+// Alles, was das andere Fenster braucht, um den Tab genauso weiterzuführen
+async function tabPayload(tab) {
+  if (state.busy && state.busyDoc === tab) throw new Error('Warte kurz, bis die KI mit diesem Dokument fertig ist.');
+  if (filler.hasUnsaved(tab)) throw new Error('Speichere zuerst das ausgefüllte Formular (Strg+S), dann kannst du den Tab verschieben.');
+  if (tab.annot?.items?.some(i => i.type === 'redact')) throw new Error('Wende zuerst die Schwärzungen an, dann kannst du den Tab verschieben.');
+  const pending = annotator.pending(tab) > 0;
+  const data = pending ? await currentBytes(tab) : await tab.pdf.getData();
+  let chat = [];
+  try { chat = JSON.parse(JSON.stringify(tab.chat.filter(m => !m.pending))); } catch { chat = []; }
+  if (state.doc === tab) rememberTab();
+  const page = tab === state.doc ? state.current : tab.current;
+  return { data, name: tab.name, path: tab.path, page, scale: tab.scale, edited: !!tab.edited || pending,
+    password: tab.password ?? null, confidential: !!tab.confidential, chat };
+}
+// Tab ohne Rückfrage entfernen (er lebt im anderen Fenster weiter)
+function dropTab(tab) {
+  const i = tabs.indexOf(tab);
+  if (i < 0) return;
+  tabs.splice(i, 1);
+  if (state.doc === tab) { state.doc = null; activateTab(tabs[Math.min(i, tabs.length - 1)] || null, true); }
+  else renderTabs();
+  tab.task.destroy().catch(() => {});
+  saveSession();
+  if (!tabs.length && SECOND_WINDOW) api.win.close();
+}
+async function receiveTab(p) {
+  if (!p?.data) return;
+  const tab = await openPdf(p.data, p.name, { path: p.path, page: p.page, scale: p.scale, edited: p.edited, password: p.password, quiet: true });
+  if (!tab) return;
+  if (p.chat?.length && !tab.chat.length) tab.chat = p.chat;
+  tab.confidential = !!p.confidential;
+  if (state.doc === tab) { renderMessages(); updateConf(); }
+  renderTabs();
+}
+async function detachTab(tab, mode) {
+  if (!api.win) return;
+  if (tabs.length < 2) { if (mode !== 'drop') toast('Öffne ein zweites PDF, dann kannst du die beiden nebeneinanderlegen.'); return; }
+  let p;
+  try { p = await tabPayload(tab); } catch (err) { return toast(err.message); }
+  if (await api.win.tearOff(p, mode)) dropTab(tab);
+}
+async function dropForeignTab(e) {
+  const [w, t] = (e.dataTransfer.getData(TAB_MIME) || '').split(':');
+  if (!w || Number(w) === myWinId) return; // eigener Tab, im eigenen Fenster losgelassen
+  const p = await api.win.pull(w, Number(t));
+  if (p) await receiveTab(p);
+}
+api.win?.onReceive((p) => { receiveTab(p); });
+api.win?.onGive(async ({ id, tabId }) => {
+  const tab = tabs.find(t => t.id === tabId);
+  let p = null;
+  if (tab) { try { p = await tabPayload(tab); } catch (err) { toast(err.message); } }
+  await api.win.given(id, p);
+  if (p) dropTab(tab);
+});
+
+const tabListEl = $('tabList');
+const clearDropMarks = () => tabListEl.querySelectorAll('.drop-before, .drop-after, .tab-dragging').forEach(x => x.classList.remove('drop-before', 'drop-after', 'tab-dragging'));
+tabListEl.addEventListener('dragstart', (e) => {
+  const el = e.target.closest('.tab');
+  const tab = el && tabs.find(t => t.id === Number(el.dataset.id));
+  if (!tab || myWinId == null) { e.preventDefault(); return; }
+  dragTab = tab;
+  e.dataTransfer.setData(TAB_MIME, `${myWinId}:${tab.id}`);
+  e.dataTransfer.effectAllowed = 'move';
+  el.classList.add('tab-dragging');
+});
+// Innerhalb der Leiste: Reihenfolge ändern
+tabListEl.addEventListener('dragover', (e) => {
+  if (!dragTab) return;
+  const el = e.target.closest('.tab');
+  tabListEl.querySelectorAll('.drop-before, .drop-after').forEach(x => x.classList.remove('drop-before', 'drop-after'));
+  if (!el || Number(el.dataset.id) === dragTab.id) return;
+  const r = el.getBoundingClientRect();
+  el.classList.add(e.clientX < r.left + r.width / 2 ? 'drop-before' : 'drop-after');
+});
+tabListEl.addEventListener('drop', (e) => {
+  if (!dragTab) return;
+  e.preventDefault(); e.stopPropagation();
+  const el = e.target.closest('.tab');
+  const target = el && tabs.find(t => t.id === Number(el.dataset.id));
+  if (target && target !== dragTab) {
+    const after = el.classList.contains('drop-after');
+    tabs.splice(tabs.indexOf(dragTab), 1);
+    tabs.splice(tabs.indexOf(target) + (after ? 1 : 0), 0, dragTab);
+    renderTabs(); saveSession();
+  }
+});
+tabListEl.addEventListener('dragend', (e) => {
+  const tab = dragTab;
+  dragTab = null;
+  clearDropMarks();
+  // „none“: nirgends abgelegt, also außerhalb von Tavi losgelassen → eigenes Fenster
+  if (tab && tabs.includes(tab) && e.dataTransfer.dropEffect === 'none') detachTab(tab, 'drop');
+});
+tabListEl.addEventListener('contextmenu', async (e) => {
+  const el = e.target.closest('.tab');
+  const tab = el && tabs.find(t => t.id === Number(el.dataset.id));
+  if (!tab || !api.win) return;
+  e.preventDefault();
+  const c = await api.win.tabMenu({ canDetach: tabs.length > 1, hasPath: !!tab.path });
+  if (c === 'window' || c === 'side') detachTab(tab, c);
+  else if (c === 'folder') api.showInFolder(tab.path);
+  else if (c === 'close') closeTab(tab);
 });
 
 /* ================= Zusammenführen ================= */
@@ -1682,7 +1800,7 @@ function saveSession() {
   }, 600);
 }
 async function restoreSession() {
-  if (!api.session) return;
+  if (!api.session || SECOND_WINDOW) return;
   const list = await api.session.load().catch(() => []);
   if (!list.length) return;
   restoring = true;
