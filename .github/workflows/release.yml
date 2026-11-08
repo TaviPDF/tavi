@@ -1,43 +1,41 @@
-# Baut Tavi für Windows und Mac und veröffentlicht das Release, sobald ein Tag wie v1.4.6 gepusht wird.
-# Vorher: Version in package.json erhöhen und die Patch-Notes in notes/VERSION.md ablegen.
+# Baut Tavi für Windows und Mac und veröffentlicht das Release, sobald auf main eine neue Version liegt:
+# Version in package.json erhöhen, Patch-Notes in notes/VERSION.md ablegen, pushen – fertig.
+# Gibt es das Release vX.Y.Z schon, passiert nichts.
 name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['package.json', 'notes/**']
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag, z. B. v1.4.5'
-        required: true
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  group: release
 
 jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
       ELECTRON: 38.0.0
       PDFJS: 6.2.108
       RCODESIGN_VER: 0.29.0
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG }}
 
-      - name: Version prüfen
+      - name: Neue Version?
+        id: v
         run: |
-          VER="${TAG#v}"
-          test "$(node -p "require('./package.json').version")" = "$VER" || { echo "package.json passt nicht zu $TAG"; exit 1; }
+          VER="$(node -p "require('./package.json').version")"
+          echo "VER=$VER" >> "$GITHUB_ENV"; echo "TAG=v$VER" >> "$GITHUB_ENV"
+          if gh release view "v$VER" >/dev/null 2>&1; then echo "Release v$VER gibt es schon."; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
           test -f "notes/$VER.md" || { echo "notes/$VER.md fehlt"; exit 1; }
-          echo "VER=$VER" >> "$GITHUB_ENV"
 
       - name: Werkzeuge installieren
+        if: steps.v.outputs.skip != '1'
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q nsis zip unzip
@@ -45,6 +43,7 @@ jobs:
           npm install --no-save --silent --prefix "$RUNNER_TEMP/npm" "pdfjs-dist@$PDFJS"
 
       - name: Electron und rcodesign laden
+        if: steps.v.outputs.skip != '1'
         run: |
           B="$RUNNER_TEMP/bau"; mkdir -p "$B/dl"; cd "$B/dl"
           get() { curl -fsSL --retry 6 --retry-all-errors --retry-delay 5 -o "$1" "$2"; }
@@ -60,6 +59,7 @@ jobs:
           echo "RCODESIGN=$B/dl/apple-codesign-$RCODESIGN_VER-x86_64-unknown-linux-musl/rcodesign" >> "$GITHUB_ENV"
 
       - name: Windows bauen (Installer, App-Paket, latest.json)
+        if: steps.v.outputs.skip != '1'
         env:
           TAVI_SRC: ${{ github.workspace }}
           TAVI_PDFJS: ${{ runner.temp }}/npm/node_modules/pdfjs-dist
@@ -69,11 +69,11 @@ jobs:
           python3 build/release.py "$VER" "@notes/$VER.md"
 
       - name: Mac bauen
+        if: steps.v.outputs.skip != '1'
         run: python3 build/mac.py "$RUNNER_TEMP/bau"
 
       - name: Release veröffentlichen
-        env:
-          GH_TOKEN: ${{ github.token }}
+        if: steps.v.outputs.skip != '1'
         run: |
           B="$RUNNER_TEMP/bau"
           files=("$B/release-$VER/Tavi-Setup-$VER.exe" "$B/release-$VER/tavi-app-$VER.json.gz" "$B/release-$VER/latest.json" \
@@ -82,5 +82,5 @@ jobs:
             gh release upload "$TAG" "${files[@]}" --clobber
             gh release edit "$TAG" --title "Tavi $VER" --notes-file "notes/$VER.md" --latest
           else
-            gh release create "$TAG" "${files[@]}" --title "Tavi $VER" --notes-file "notes/$VER.md" --latest
+            gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "Tavi $VER" --notes-file "notes/$VER.md" --latest
           fi

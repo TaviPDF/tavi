@@ -32,7 +32,7 @@ npm install
 npm start
 ```
 
-**Neue Version veröffentlichen:** Version in `package.json` erhöhen, Patch-Notes in `notes/VERSION.md` schreiben, committen und den Tag pushen (`git tag v1.4.6 && git push origin v1.4.6`). GitHub baut dann Windows- und Mac-Version und legt das Release an.
+**Neue Version veröffentlichen:** Version in `package.json` erhöhen, Patch-Notes in `notes/VERSION.md` schreiben, auf `main` pushen. GitHub baut dann Windows- und Mac-Version und legt das Release `v1.4.6` an.
 
 | Ordner/Datei | Inhalt |
 |---|---|
@@ -42,7 +42,7 @@ npm start
 | `src/vendor/` | mitgelieferte Bibliotheken (pdf-lib, docx, PptxGenJS, JSZip, Tesseract) |
 | `build/` | Icons, NSIS-Installer, Skripte für Release (`release.py`), Mac (`mac.py`) und Microsoft Store (`store.py`) |
 | `notes/` | Patch-Notes je Version (`1.4.5.md` …), werden zum Text des Releases |
-| `.github/workflows/release.yml` | baut und veröffentlicht automatisch, sobald ein Tag `vX.Y.Z` gepusht wird |
+| `.github/workflows/release.yml` | baut und veröffentlicht automatisch, sobald auf `main` eine neue Version in `package.json` steht |
 
 ## Lizenz
 
