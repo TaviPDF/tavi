@@ -18,6 +18,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.v.outputs.skip }}
+      ver: ${{ steps.v.outputs.ver }}
     env:
       ELECTRON: 38.0.0
       PDFJS: 6.2.108
@@ -31,8 +34,15 @@ jobs:
         run: |
           VER="$(node -p "require('./package.json').version")"
           echo "VER=$VER" >> "$GITHUB_ENV"; echo "TAG=v$VER" >> "$GITHUB_ENV"
-          if gh release view "v$VER" >/dev/null 2>&1; then echo "Release v$VER gibt es schon."; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
-          test -f "notes/$VER.md" || { echo "notes/$VER.md fehlt"; exit 1; }
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VER" >/dev/null 2>&1; then
+            echo "Release v$VER gibt es schon."
+            echo "need_release=0" >> "$GITHUB_OUTPUT"
+            if gh release view "v$VER" --json assets --jq '.assets[].name' | grep -q '\.msix$'; then echo "skip=1" >> "$GITHUB_OUTPUT"; fi
+          else
+            echo "need_release=1" >> "$GITHUB_OUTPUT"
+            test -f "notes/$VER.md" || { echo "notes/$VER.md fehlt"; exit 1; }
+          fi
 
       - name: Werkzeuge installieren
         if: steps.v.outputs.skip != '1'
@@ -72,15 +82,48 @@ jobs:
         if: steps.v.outputs.skip != '1'
         run: python3 build/mac.py "$RUNNER_TEMP/bau"
 
-      - name: Release veröffentlichen
+      - name: Windows-Programmordner für das Store-Paket weitergeben
         if: steps.v.outputs.skip != '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-app
+          path: ${{ runner.temp }}/bau/win
+          retention-days: 3
+
+      - name: Release veröffentlichen
+        if: steps.v.outputs.skip != '1' && steps.v.outputs.need_release == '1'
         run: |
           B="$RUNNER_TEMP/bau"
           files=("$B/release-$VER/Tavi-Setup-$VER.exe" "$B/release-$VER/tavi-app-$VER.json.gz" "$B/release-$VER/latest.json" \
                  "$B/mac-$VER/Tavi-$VER-mac-AppleSilicon.zip" "$B/mac-$VER/Tavi-$VER-mac-Intel.zip")
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${files[@]}" --clobber
-            gh release edit "$TAG" --title "Tavi $VER" --notes-file "notes/$VER.md" --latest
-          else
-            gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "Tavi $VER" --notes-file "notes/$VER.md" --latest
-          fi
+          gh release create "$TAG" "${files[@]}" --target "$GITHUB_SHA" --title "Tavi $VER" --notes-file "notes/$VER.md" --latest
+
+  # Microsoft-Store-Paket (MSIX) auf Windows mit makeappx bauen und ans Release hängen.
+  # Hochladen ins Partner Center bleibt Handarbeit.
+  store:
+    needs: release
+    if: needs.release.outputs.skip != '1'
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VER: ${{ needs.release.outputs.ver }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet pillow
+      - uses: actions/download-artifact@v4
+        with:
+          name: win-app
+          path: ${{ runner.temp }}/bau/win
+      - name: MSIX bauen
+        shell: pwsh
+        run: |
+          $mk = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $mk) { throw "makeappx.exe nicht gefunden" }
+          $env:MAKEAPPX = $mk.FullName
+          python build/store.py "$env:RUNNER_TEMP\bau"
+      - name: An das Release hängen
+        shell: pwsh
+        run: gh release upload "v$env:VER" "$env:RUNNER_TEMP\bau\store-$env:VER\Tavi-$env:VER.msix" --clobber

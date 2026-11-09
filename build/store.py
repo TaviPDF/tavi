@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Baut das Microsoft-Store-Paket (MSIX) aus dem Windows-Programmordner von release.py.
-Aufruf: store.py   (Werte aus build/store.json, die Partner Center vorgibt)"""
+Aufruf: store.py BAU_ORDNER   (Werte aus build/store.json, die Partner Center vorgibt)
+Packer: MAKEAPPX=…\\makeappx.exe (Windows SDK) oder MAKEMSIX=…/makemsix (Linux, aus microsoft/msix-packaging)"""
 import json, os, shutil, subprocess, sys
 from xml.sax.saxutils import escape
 from PIL import Image
@@ -94,6 +95,10 @@ out = f'{B}/store-{pkg["version"]}'
 os.makedirs(out, exist_ok=True)
 target = f'{out}/Tavi-{pkg["version"]}.msix'
 if os.path.exists(target): os.remove(target)
-env = dict(os.environ, LD_LIBRARY_PATH=os.path.join(os.path.dirname(os.path.dirname(MAKEMSIX)), 'lib'))
-subprocess.run([MAKEMSIX, 'pack', '-d', stage, '-p', target], check=True, env=env)
+if os.environ.get('MAKEAPPX'):
+    # Windows (z. B. GitHub Actions): makeappx.exe aus dem Windows SDK
+    subprocess.run([os.environ['MAKEAPPX'], 'pack', '/d', stage, '/p', target, '/o'], check=True)
+else:
+    env = dict(os.environ, LD_LIBRARY_PATH=os.path.join(os.path.dirname(os.path.dirname(MAKEMSIX)), 'lib'))
+    subprocess.run([MAKEMSIX, 'pack', '-d', stage, '-p', target], check=True, env=env)
 print(target, os.path.getsize(target))
