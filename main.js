@@ -594,7 +594,7 @@ function buildMenu() {
 function createWindow(o = {}) {
   const first = BrowserWindow.getAllWindows().length === 0;
   const w = new BrowserWindow({
-    width: 1400, height: 900, minWidth: 900, minHeight: 600, ...(o.bounds || {}),
+    width: 1400, height: 900, minWidth: 560, minHeight: 500, ...(o.bounds || {}),
     title: 'Tavi',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#12161c' : '#eef1f4',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false }

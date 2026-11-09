@@ -678,3 +678,29 @@ body.snipping .page, body.snipping .page .textLayer, body.snipping .page .textLa
 .tab.tab-dragging { opacity: .45; }
 .tab.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
 .tab.drop-after { box-shadow: inset -3px 0 0 var(--accent); }
+
+/* KI-Spalte schließen (×) – die Unterhaltung bleibt erhalten */
+.panel-head { position: relative; padding-right: 40px; }
+.panel-close { position: absolute; top: 8px; right: 8px; color: var(--muted); }
+.panel-close:hover { color: var(--ink); }
+.lbl-short { display: none; }
+
+/* Schmale Fenster, z. B. zwei Tavi-Fenster nebeneinander auf einem 16:9-Bildschirm */
+@media (max-width: 1000px) {
+  :root { --panel-w: 300px; }
+  .toolbar { gap: 6px; padding: 6px 8px; }
+  .group { gap: 2px; }
+  #pageInput { width: 46px; }
+  #pageCount, .zoomlabel { min-width: 38px; font-size: 13px; }
+  .lbl-long { display: none; }
+  .lbl-short { display: inline; }
+  .side { width: 190px; }
+  .pages { padding: 16px 12px 48px; }
+  .quick { padding: 0 10px 8px; }
+  .panel-head { padding: 10px 40px 6px 10px; gap: 6px; }
+}
+@media (max-width: 760px) {
+  :root { --panel-w: 270px; }
+  #zoomLabel, #btnPrint { display: none; }
+  .toolbar .btn { padding: 5px 9px; }
+}

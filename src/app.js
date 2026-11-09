@@ -94,7 +94,7 @@ async function openPdf(data, name, opts = {}) {
     id: tabSeq++, name, size, task, pdf, sizes, path: opts.path || null,
     baseWidth: Math.max(...sizes.map(s => s.w)),
     texts: new Array(pdf.numPages).fill(null),
-    chat: [], current: 1, scale: opts.scale || null, scrollTop: 0, edited: !!opts.edited, password: usedPw
+    chat: [], current: 1, scale: opts.scale || null, fit: opts.scale ? !!opts.fit : true, scrollTop: 0, edited: !!opts.edited, password: usedPw
   };
   tabs.push(tab);
   activateTab(tab);
@@ -141,7 +141,7 @@ function activateTab(tab, force = false) {
     refreshRecent();
     return;
   }
-  if (tab.scale == null) fitWidth(false);
+  if (tab.scale == null || tab.fit) fitWidth(false);   // „Breite“: an die aktuelle Fensterbreite anpassen
   $('welcome').hidden = true;
   $('docName').textContent = tab.name;
   $('docName').title = tab.name;
@@ -300,8 +300,9 @@ async function drawPage(n, entry, token) {
   }
 }
 
-function setScale(s) {
+function setScale(s, keepFit = false) {
   if (!state.pdf) return;
+  if (!keepFit) state.doc.fit = false;   // selbst gezoomt: nicht mehr automatisch anpassen
   const viewer = $('viewer');
   const ratio = viewer.scrollHeight ? viewer.scrollTop / viewer.scrollHeight : 0;
   state.scale = Math.min(4, Math.max(0.4, Math.round(s * 100) / 100));
@@ -312,10 +313,29 @@ function fitWidth(rebuild = true) {
   const doc = state.doc;
   const two = doc && doc.layout && doc.layout !== 'single';
   const base = doc && doc.viewRot % 180 ? Math.max(...state.sizes.map(s => s.h)) : state.baseWidth;
-  const avail = $('viewer').clientWidth - 56 - (two ? 16 : 0);
+  const cs = getComputedStyle($('pages'));
+  const avail = $('viewer').clientWidth - (parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) || 48) - 8 - (two ? 16 : 0);
   const s = Math.max(0.3, Math.min(2.2, avail / (base * (two ? 2 : 1))));
-  if (rebuild) setScale(s); else state.scale = Math.round(s * 100) / 100;
+  if (doc) doc.fit = true;   // ab jetzt passt sich die Seite der Fensterbreite an
+  if (rebuild) setScale(s, true); else state.scale = Math.round(s * 100) / 100;
 }
+// Fenster schmaler/breiter oder KI-Spalte zu/auf: im Modus „Breite“ die Seite neu einpassen,
+// damit sie auch in zwei halben Fenstern nebeneinander ganz sichtbar bleibt.
+let fitW = 0, fitT;
+new ResizeObserver(() => {
+  const w = $('viewer').offsetWidth;
+  if (Math.abs(w - fitW) < 2) return;
+  fitW = w;
+  clearTimeout(fitT);
+  fitT = setTimeout(() => {
+    if (!state.pdf || !state.doc?.fit) return;
+    const before = state.scale;
+    fitWidth(false);
+    const after = state.scale;
+    state.scale = before;
+    if (Math.abs(after - before) >= 0.01) setScale(after, true);
+  }, 120);
+}).observe($('viewer'));
 
 function goToPage(n) {
   if (!state.pdf) return;
@@ -911,9 +931,16 @@ function toast(t) {
 async function copy(t) {
   try { await navigator.clipboard.writeText(t); toast('Kopiert'); } catch { toast('Kopieren nicht möglich'); }
 }
-function showPanel(on) {
+// KI-Spalte ein-/ausblenden. Die Unterhaltung bleibt dabei erhalten (sie gehört zum Tab).
+// Der zuletzt gewählte Zustand wird gemerkt, auch für neue Fenster.
+function showPanel(on, remember = true) {
   document.body.classList.toggle('no-panel', !on);
   $('togglePanel').classList.toggle('active', on);
+  $('togglePanel').setAttribute('aria-pressed', String(on));
+  if (remember) { try { localStorage.setItem('tavi.panel', on ? '1' : '0'); } catch {} }
+}
+function panelRemembered() {
+  try { return localStorage.getItem('tavi.panel') !== '0'; } catch { return true; }
 }
 async function openDialog() {
   const list = await (api.openDocs || api.openPdfs)();   // mehrere auf einmal möglich, jede Datei bekommt einen Tab
@@ -1039,6 +1066,7 @@ $('zoomIn').onclick = () => setScale(state.scale * 1.15);
 $('zoomOut').onclick = () => setScale(state.scale / 1.15);
 $('fitWidth').onclick = () => fitWidth(true);
 $('togglePanel').onclick = () => showPanel(document.body.classList.contains('no-panel'));
+$('panelClose').onclick = () => { showPanel(false); $('viewer').focus({ preventScroll: true }); };
 $('clearChat').onclick = () => { if (!state.busy) { state.chat = []; renderMessages(); } };
 
 $('viewer').addEventListener('scroll', () => { trackCurrentPage(); hideSelBar(); }, { passive: true });
@@ -1233,7 +1261,7 @@ async function tabPayload(tab) {
   try { chat = JSON.parse(JSON.stringify(tab.chat.filter(m => !m.pending))); } catch { chat = []; }
   if (state.doc === tab) rememberTab();
   const page = tab === state.doc ? state.current : tab.current;
-  return { data, name: tab.name, path: tab.path, page, scale: tab.scale, edited: !!tab.edited || pending,
+  return { data, name: tab.name, path: tab.path, page, scale: tab.scale, fit: !!tab.fit, edited: !!tab.edited || pending,
     password: tab.password ?? null, confidential: !!tab.confidential, chat };
 }
 // Tab ohne Rückfrage entfernen (er lebt im anderen Fenster weiter)
@@ -1249,7 +1277,7 @@ function dropTab(tab) {
 }
 async function receiveTab(p) {
   if (!p?.data) return;
-  const tab = await openPdf(p.data, p.name, { path: p.path, page: p.page, scale: p.scale, edited: p.edited, password: p.password, quiet: true });
+  const tab = await openPdf(p.data, p.name, { path: p.path, page: p.page, scale: p.scale, fit: p.fit, edited: p.edited, password: p.password, quiet: true });
   if (!tab) return;
   if (p.chat?.length && !tab.chat.length) tab.chat = p.chat;
   tab.confidential = !!p.confidential;
@@ -1796,7 +1824,7 @@ function saveSession() {
   if (restoring || !api.session) return;
   clearTimeout(sessionTimer);
   sessionTimer = setTimeout(() => {
-    api.session.save(tabs.filter(t => t.path).map(t => ({ path: t.path, page: t.current, scale: t.scale, active: t === state.doc })));
+    api.session.save(tabs.filter(t => t.path).map(t => ({ path: t.path, page: t.current, scale: t.scale, fit: !!t.fit, active: t === state.doc })));
   }, 600);
 }
 async function restoreSession() {
@@ -1808,7 +1836,7 @@ async function restoreSession() {
   for (const t of list) {
     const f = await api.openPath(t.path);
     if (!f) continue;
-    await openPdf(f.data, f.name, { path: f.path, page: t.page, scale: t.scale, quiet: true });
+    await openPdf(f.data, f.name, { path: f.path, page: t.page, scale: t.scale, fit: t.fit !== false, quiet: true });
     if (t.active) active = tabs[tabs.length - 1];
   }
   restoring = false;
@@ -1998,7 +2026,7 @@ if (UPD) {
 (async () => {
   state.settings = await api.getSettings();
   $('level').value = state.settings.level;
-  showPanel(true);
+  showPanel(panelRemembered(), false);
   updateSetupCard();
   renderMessages();
   refreshRecent();
