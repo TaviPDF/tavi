@@ -1066,6 +1066,50 @@ $('zoomIn').onclick = () => setScale(state.scale * 1.15);
 $('zoomOut').onclick = () => setScale(state.scale / 1.15);
 $('fitWidth').onclick = () => fitWidth(true);
 $('togglePanel').onclick = () => showPanel(document.body.classList.contains('no-panel'));
+// KI-Spalte per Ziehen am linken Rand schmaler/breiter machen (wie ein Windows-Fenster).
+// Die gewählte Breite wird gemerkt; in schmalen Fenstern wird sie automatisch begrenzt.
+const PANEL_MIN = 240, VIEW_MIN = 280;
+function panelSaved() { try { return Number(localStorage.getItem('tavi.panelW')) || 0; } catch { return 0; } }
+function applyPanelWidth(w = panelSaved()) {
+  const root = document.documentElement;
+  if (!w) { root.style.removeProperty('--panel-w'); return; }
+  const max = Math.max(PANEL_MIN, Math.min(900, window.innerWidth - VIEW_MIN));
+  root.style.setProperty('--panel-w', `${Math.round(Math.min(max, Math.max(PANEL_MIN, w)))}px`);
+}
+(() => {
+  const grip = $('panelResize');
+  let drag = null;
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    drag = { x: e.clientX, w: $('panel').getBoundingClientRect().width };
+    grip.setPointerCapture(e.pointerId);
+    document.body.classList.add('panel-resizing');
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    applyPanelWidth(drag.w + (drag.x - e.clientX));
+  });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    document.body.classList.remove('panel-resizing');
+    const w = Math.round($('panel').getBoundingClientRect().width);
+    try { localStorage.setItem('tavi.panelW', String(w)); } catch {}
+  };
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('pointercancel', end);
+  grip.addEventListener('dblclick', () => { try { localStorage.removeItem('tavi.panelW'); } catch {} applyPanelWidth(0); });
+  grip.addEventListener('keydown', (e) => {   // auch mit den Pfeiltasten bedienbar
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const w = $('panel').getBoundingClientRect().width + (e.key === 'ArrowLeft' ? 20 : -20);
+    applyPanelWidth(w);
+    try { localStorage.setItem('tavi.panelW', String(Math.round($('panel').getBoundingClientRect().width))); } catch {}
+  });
+  window.addEventListener('resize', () => applyPanelWidth());
+  applyPanelWidth();
+})();
 $('panelClose').onclick = () => { showPanel(false); $('viewer').focus({ preventScroll: true }); };
 $('clearChat').onclick = () => { if (!state.busy) { state.chat = []; renderMessages(); } };
 

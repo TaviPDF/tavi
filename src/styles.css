@@ -704,3 +704,11 @@ body.snipping .page, body.snipping .page .textLayer, body.snipping .page .textLa
   #zoomLabel, #btnPrint { display: none; }
   .toolbar .btn { padding: 5px 9px; }
 }
+
+/* KI-Spalte breiter/schmaler ziehen */
+.panel { position: relative; }
+.panel-resize { position: absolute; left: -3px; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 5; touch-action: none; }
+.panel-resize::after { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: transparent; transition: background .15s; }
+.panel-resize:hover::after, .panel-resize:focus-visible::after, body.panel-resizing .panel-resize::after { background: var(--accent); }
+.panel-resize:focus-visible { outline: none; }
+body.panel-resizing, body.panel-resizing * { cursor: col-resize !important; user-select: none !important; }
